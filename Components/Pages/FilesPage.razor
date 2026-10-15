@@ -1,0 +1,1025 @@
+@page "/files"
+@attribute [Authorize]
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IAuthService AuthService
+@inject IFileStorageService FileStorageService
+@inject IShareLinkService ShareLinkService
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+
+<PageTitle>Encrypted Files - BehavioralAuthSystem</PageTitle>
+
+<div class="container-fluid p-0">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3 mb-4">
+        <div>
+            <h2 class="m-0 text-primary">Encrypted File Storage</h2>
+            <p class="text-muted small m-0">Files are encrypted on disk with authenticated AES-256-GCM + HKDF-SHA256</p>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            @if (selectedFileIds.Count > 0)
+            {
+                <button class="btn btn-outline-danger btn-sm d-flex align-items-center gap-1" @onclick="TriggerBulkDelete">
+                    <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                    </svg>
+                    <span>Delete Selected (@selectedFileIds.Count)</span>
+                </button>
+            }
+            <button class="btn btn-vault btn-sm d-flex align-items-center gap-1" @onclick="TriggerUpload">
+                <svg width="15" height="15" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+                </svg>
+                <span>Upload & Encrypt File</span>
+            </button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(statusMessage))
+    {
+        <div class="alert alert-info py-2 px-3 small mb-3 d-flex justify-content-between align-items-center">
+            <span>@statusMessage</span>
+            <button type="button" class="btn-close btn-close-white small" @onclick="() => statusMessage = string.Empty"></button>
+        </div>
+    }
+
+    <!-- Search, Filter & Sort Bar -->
+    <div class="vault-card mb-3 p-3">
+        <div class="row g-2 align-items-center">
+            <div class="col-md-5">
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-transparent border-end-0 border-color text-muted">
+                        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                        </svg>
+                    </span>
+                    <input type="text" class="form-control form-control-vault border-start-0" 
+                           placeholder="Search files by name..." 
+                           @bind="searchTerm" @bind:event="oninput" />
+                </div>
+            </div>
+            <div class="col-md-4 col-6">
+                <select class="form-select form-select-sm form-control-vault" @bind="selectedTypeFilter">
+                    <option value="">All File Types</option>
+                    <option value="text/">Documents & Text</option>
+                    <option value="image/">Images</option>
+                    <option value="application/pdf">PDF Documents</option>
+                    <option value="application/">Other Applications</option>
+                </select>
+            </div>
+            <div class="col-md-3 col-6">
+                <select class="form-select form-select-sm form-control-vault" @bind="selectedSort">
+                    <option value="date_desc">Newest First</option>
+                    <option value="date_asc">Oldest First</option>
+                    <option value="name_asc">Name (A-Z)</option>
+                    <option value="size_desc">Size (Largest)</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Files Table -->
+    <div class="vault-card">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0" style="font-size: 0.875rem;">
+                <thead>
+                    <tr class="table-light">
+                        <th style="width: 40px;">
+                            <input type="checkbox" class="form-check-input" @onchange="ToggleSelectAll" />
+                        </th>
+                        <th>Filename</th>
+                        <th>Size</th>
+                        <th>Content Type</th>
+                        <th>Tags</th>
+                        <th>Uploaded (UTC)</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (FilteredFiles.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="7" class="text-center text-muted py-5">
+                                @if (userFiles.Count == 0)
+                                {
+                                    <div>No encrypted files stored yet. Click <strong>Upload & Encrypt File</strong> above.</div>
+                                }
+                                else
+                                {
+                                    <div>No files match the search criteria.</div>
+                                }
+                            </td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var file in FilteredFiles)
+                        {
+                            <tr>
+                                <td>
+                                    <input type="checkbox" 
+                                           class="form-check-input" 
+                                           checked="@selectedFileIds.Contains(file.Id)" 
+                                           @onchange="(e) => ToggleSelectFile(file.Id, (bool)e.Value!)" />
+                                </td>
+                                <td>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="p-1 rounded bg-teal-subtle text-teal">
+                                            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                                            </svg>
+                                        </div>
+                                        <span class="fw-semibold">@file.FileName</span>
+                                    </div>
+                                </td>
+                                <td>@FormatFileSize(file.SizeBytes)</td>
+                                <td>
+                                    <span class="badge bg-secondary-subtle text-secondary border">@file.ContentType</span>
+                                </td>
+                                <td>
+                                    @if (string.IsNullOrWhiteSpace(file.Tags)) { <span class="text-muted">—</span> } else { @foreach (var tag in file.Tags.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)) { <span class="badge bg-teal-subtle text-teal border me-1">@tag</span> } }
+                                </td>
+                                <td>@file.CreatedAt.ToString("yyyy-MM-dd HH:mm")</td>
+                                <td class="text-end">
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-vault-secondary" @onclick="() => PreviewFile(file)" title="Inline Preview">
+                                            <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+                                        </button>
+                                        <button class="btn btn-vault-secondary" @onclick="() => DownloadFile(file)" title="Download">
+                                            <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                                        </button>
+                                        @if (IsEditable(file.FileName))
+                                        {
+                                            <button class="btn btn-vault-secondary" @onclick="() => TriggerUpdate(file)" title="Edit Document">
+                                                <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                                            </button>
+                                        }
+                                        <button class="btn btn-vault-secondary" @onclick="() => OpenTagModal(file)" title="Edit Tags">🏷️</button>
+                                        <button class="btn btn-vault-secondary" @onclick="() => OpenVersionModal(file)" title="Version History">
+                                            <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                        </button>
+                                        <button class="btn btn-vault-secondary" @onclick="() => OpenShareModal(file)" title="Share Link">
+                                            <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path></svg>
+                                        </button>
+                                        <button class="btn btn-outline-danger" @onclick="() => ConfirmDeleteFile(file)" title="Move to Trash">
+                                            <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Upload Modal -->
+@if (showUploadModal)
+{
+    <div class="modal-vault-backdrop">
+        <div class="modal-vault-content">
+            <h4 class="text-primary mb-3">Upload & Encrypt File</h4>
+            <div class="mb-3">
+                <label class="form-label small fw-semibold">Select File (Max 50 MB):</label>
+                <InputFile OnChange="OnInputFileChange" class="form-control form-control-vault" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label small fw-semibold">Tags (comma separated, optional):</label>
+                <input class="form-control form-control-vault" @bind="uploadTags" placeholder="research, report, important" />
+            </div>
+
+            @if (selectedUploadFile != null)
+            {
+                <div class="alert alert-secondary py-2 small mb-3">
+                    Selected: <strong>@selectedUploadFile.Name</strong> (@FormatFileSize(selectedUploadFile.Size))
+                </div>
+            }
+
+            <div class="d-flex justify-content-end gap-2 mt-4">
+                <button class="btn btn-vault-secondary btn-sm" @onclick="() => showUploadModal = false">Cancel</button>
+                <button class="btn btn-vault btn-sm" @onclick="UploadSelectedFile" disabled="@(selectedUploadFile == null || isUploading)">
+                    @if (isUploading)
+                    {
+                        <span class="spinner-border spinner-border-sm me-1"></span>
+                        <span>Encrypting (AES-256-GCM)...</span>
+                    }
+                    else
+                    {
+                        <span>Encrypt & Upload</span>
+                    }
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Inline Preview Modal -->
+@if (showPreviewModal && previewFileRecord != null)
+{
+    <div class="modal-vault-backdrop">
+        <div class="modal-vault-content" style="max-width: 800px;">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="m-0 text-primary">Decrypted Preview: @previewFileRecord.FileName</h5>
+                <button class="btn-close" @onclick="() => showPreviewModal = false"></button>
+            </div>
+
+            <div class="p-3 border rounded overflow-auto bg-body-tertiary" style="max-height: 450px;">
+                @if (previewFileRecord.ContentType.StartsWith("image/"))
+                {
+                    <img src="data:@previewFileRecord.ContentType;base64,@Convert.ToBase64String(previewBytes ?? Array.Empty<byte>())" class="img-fluid rounded mx-auto d-block" alt="Preview" />
+                }
+                else
+                {
+                    <pre style="white-space: pre-wrap; font-family: var(--font-mono); font-size: 0.85rem; margin: 0;">@System.Text.Encoding.UTF8.GetString(previewBytes ?? Array.Empty<byte>())</pre>
+                }
+            </div>
+            <div class="d-flex justify-content-between align-items-center mt-3">
+                <span class="text-muted small">Decrypted in-memory using user's unique derived key</span>
+                <button class="btn btn-vault-secondary btn-sm" @onclick="() => showPreviewModal = false">Close</button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Version History Modal -->
+@if (showVersionModal && versionTargetFile != null)
+{
+    <div class="modal-vault-backdrop">
+        <div class="modal-vault-content" style="max-width: 650px;">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="m-0 text-primary">Version History: @versionTargetFile.FileName</h5>
+                <button class="btn-close" @onclick="() => showVersionModal = false"></button>
+            </div>
+
+            <p class="text-muted small mb-3">Every saved modification creates an encrypted snapshot version that can be inspected and restored.</p>
+
+            @if (activeFileVersions.Count == 0)
+            {
+                <div class="alert alert-secondary py-3 text-center small">No snapshot versions found for this file. Edit the document to create snapshots.</div>
+            }
+            else
+            {
+                <div class="table-responsive" style="max-height: 300px;">
+                    <table class="table table-sm table-hover align-middle" style="font-size: 0.85rem;">
+                        <thead>
+                            <tr class="table-light">
+                                <th>Version</th>
+                                <th>Created (UTC)</th>
+                                <th>Size</th>
+                                <th class="text-end">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var ver in activeFileVersions)
+                            {
+                                <tr>
+                                    <td><span class="badge bg-teal">v@ver.VersionNumber</span></td>
+                                    <td>@ver.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                                    <td>@FormatFileSize(ver.SizeBytes)</td>
+                                    <td class="text-end">
+                                        <button class="btn btn-vault-secondary btn-sm py-0 px-2" @onclick="() => RestoreFileVersion(ver.Id)">
+                                            ↩️ Restore
+                                        </button>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+
+            <div class="text-end mt-3">
+                <button class="btn btn-vault-secondary btn-sm" @onclick="() => showVersionModal = false">Close</button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Tags Modal -->
+@if (showTagModal && tagTargetFile != null)
+{
+    <div class="modal-vault-backdrop">
+        <div class="modal-vault-content">
+            <h5 class="text-primary mb-3">Tags: @tagTargetFile.FileName</h5>
+            <input class="form-control form-control-vault" @bind="tagEditor" placeholder="tag1, tag2, tag3" />
+            <div class="d-flex justify-content-end gap-2 mt-4">
+                <button class="btn btn-vault-secondary btn-sm" @onclick="() => showTagModal = false">Cancel</button>
+                <button class="btn btn-vault btn-sm" @onclick="SaveTags">Save Tags</button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Share Link Modal -->
+@if (showShareModal && shareTargetFile != null)
+{
+    <div class="modal-vault-backdrop">
+        <div class="modal-vault-content share-modal">
+
+            <h5 class="text-primary mb-4">
+                Share File: @shareTargetFile.FileName
+            </h5>
+
+            <div class="mb-3">
+                <label class="form-label">Optional Expiry (Hours):</label>
+                <input type="number"
+                       min="1"
+                       class="form-control form-control-vault"
+                       @bind="shareExpiryHours"
+                       placeholder="Leave empty for no expiry" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Optional Download Limit:</label>
+                <input type="number"
+                       min="1"
+                       class="form-control form-control-vault"
+                       @bind="shareMaxCount"
+                       placeholder="Leave empty for unlimited" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label">Optional Passcode Protection:</label>
+                <input type="password"
+                       class="form-control form-control-vault"
+                       @bind="sharePassword"
+                       placeholder="Protect link with passcode" />
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(generatedShareUrl))
+            {
+                <div class="share-generated-box mb-3">
+                    <div class="fw-bold mb-2">
+                        ✓ Share Link Generated
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <input type="text"
+                               class="form-control"
+                               readonly
+                               value="@generatedShareUrl" />
+
+                        <button type="button"
+                                class="btn btn-outline-primary"
+                                @onclick="() => CopyShareLink(generatedShareUrl)">
+                            Copy
+                        </button>
+                    </div>
+                </div>
+            }
+
+            @if (activeShareLinks.Count > 0)
+            {
+                <div class="mt-4 border-top pt-3">
+                    <div class="fw-semibold text-muted mb-2">
+                        Active Share Links:
+                    </div>
+
+                    @foreach (var sl in activeShareLinks)
+                    {
+                        <div class="share-link-row" @key="sl.Id">
+                            <div class="share-link-info">
+                                <div class="share-link-url">
+                                    @GetShareUrl(sl.Token)
+                                </div>
+
+                                <div class="small text-muted mt-1">
+                                    Used: @sl.AccessCount
+                                    @if (sl.MaxAccessCount.HasValue)
+                                    {
+                                        <span>/@sl.MaxAccessCount.Value</span>
+                                    }
+                                </div>
+                            </div>
+
+                            <div class="share-link-buttons">
+                                <button type="button"
+                                        class="btn btn-outline-primary btn-sm"
+                                        @onclick="() => CopyShareLink(GetShareUrl(sl.Token))">
+                                    📋 Copy
+                                </button>
+
+                                <button type="button"
+                                        class="btn btn-outline-danger btn-sm"
+                                        @onclick="() => RevokeLink(sl.Id)">
+                                    Revoke
+                                </button>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(copyMessage))
+            {
+                <div class="alert alert-info py-2 mt-3 mb-0">
+                    @copyMessage
+                </div>
+            }
+
+            <div class="d-flex justify-content-end gap-2 mt-4">
+                <button type="button"
+                        class="btn btn-vault-secondary"
+                        @onclick="() => showShareModal = false">
+                    Close
+                </button>
+
+                <button type="button"
+                        class="btn btn-vault"
+                        @onclick="CreateShareLink">
+                    Generate Link
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Delete Confirmation Modal -->
+@if (showDeleteConfirmModal)
+{
+    <div class="modal-vault-backdrop">
+        <div class="modal-vault-content" style="max-width: 450px;">
+            <h5 class="text-danger mb-2">Confirm Move to Trash</h5>
+            <p class="text-muted small mb-3">
+                @if (pendingActionType == ActionTypePending.Delete && targetActionFile != null)
+                {
+                    <span>Are you sure you want to move <strong>@targetActionFile.FileName</strong> to Trash? You can restore it later from the Trash Bin.</span>
+                }
+                else
+                {
+                    <span>Are you sure you want to move @selectedFileIds.Count selected file(s) to Trash?</span>
+                }
+            </p>
+            <div class="d-flex justify-content-end gap-2">
+                <button class="btn btn-vault-secondary btn-sm" @onclick="() => showDeleteConfirmModal = false">Cancel</button>
+                <button class="btn btn-danger btn-sm" @onclick="ConfirmAndExecuteDelete">Move to Trash</button>
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Behavioral verification for protected file operations -->
+<ActionVerificationModal @bind-IsOpen="showActionModal"
+                         CurrentUser="currentUser"
+                         ActionType="@verificationActionType"
+                         OperationContext="@actionContextDescription"
+                         OnVerificationPassed="ExecuteVerifiedAction" />
+<style>
+    .share-modal {
+        width: 100%;
+        max-width: 680px;
+    }
+
+    .share-generated-box {
+        padding: 14px;
+        border: 1px solid rgba(13, 148, 136, 0.3);
+        border-radius: 10px;
+        background: rgba(13, 148, 136, 0.07);
+    }
+
+    .share-generated-box input {
+        min-width: 0;
+        font-size: 0.8rem;
+    }
+
+    .share-link-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 14px 0;
+        border-bottom: 1px solid #e2e8f0;
+    }
+
+    .share-link-info {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .share-link-url {
+        overflow-wrap: anywhere;
+        font-family: monospace;
+        font-size: 0.8rem;
+        color: #0d9488;
+        padding: 6px 8px;
+        background: rgba(13, 148, 136, 0.06);
+        border-radius: 6px;
+    }
+
+    .share-link-buttons {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+    }
+
+    .share-link-buttons button {
+        white-space: nowrap;
+    }
+
+    .share-link-buttons .btn-outline-primary {
+        color: #0d9488;
+        border-color: #0d9488;
+    }
+
+    .share-link-buttons .btn-outline-primary:hover {
+        background: #0d9488;
+        color: white;
+    }
+
+    @@media (max-width: 600px) {
+        .share-link-row {
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .share-link-buttons {
+            justify-content: flex-end;
+        }
+
+        .share-generated-box .d-flex {
+            flex-direction: column;
+        }
+    }
+</style>
+
+@code {
+    private User? currentUser;
+    private List<FileRecord> userFiles = new List<FileRecord>();
+    private HashSet<int> selectedFileIds = new HashSet<int>();
+
+    private string searchTerm = string.Empty;
+    private string selectedTypeFilter = string.Empty;
+    private string selectedSort = "date_desc";
+
+    private bool showUploadModal = false;
+    private IBrowserFile? selectedUploadFile;
+    private string uploadTags = string.Empty;
+    private bool showTagModal;
+    private FileRecord? tagTargetFile;
+    private string tagEditor = string.Empty;
+    private bool isUploading = false;
+    private string statusMessage = string.Empty;
+
+    private bool showPreviewModal = false;
+    private FileRecord? previewFileRecord;
+    private byte[]? previewBytes;
+
+    private bool showVersionModal = false;
+    private FileRecord? versionTargetFile;
+    private List<FileVersion> activeFileVersions = new List<FileVersion>();
+
+    private bool showShareModal = false;
+    private FileRecord? shareTargetFile;
+    private int? shareExpiryHours;
+    private int? shareMaxCount;
+    private string sharePassword = string.Empty;
+    private string generatedShareUrl = string.Empty;
+    private List<ShareLink> activeShareLinks = new List<ShareLink>();
+
+    private bool showDeleteConfirmModal = false;
+
+    // Action Verification Gating State
+    private bool showActionModal = false;
+    private string actionContextDescription = string.Empty;
+    private string verificationActionType = "Upload";
+    private ActionTypePending pendingActionType = ActionTypePending.None;
+    private FileRecord? targetActionFile;
+    private int? targetVersionId;
+
+    private enum ActionTypePending { None, Upload, Update, View, Download, RestoreVersion, Delete, BulkDelete }
+
+    private string copyMessage = string.Empty;
+
+    private List<FileRecord> FilteredFiles
+    {
+        get
+        {
+            var query = userFiles.AsEnumerable();
+
+            if (!string.IsNullOrWhiteSpace(searchTerm))
+            {
+                query = query.Where(f => f.FileName.Contains(searchTerm, StringComparison.OrdinalIgnoreCase) || f.Tags.Contains(searchTerm, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (!string.IsNullOrWhiteSpace(selectedTypeFilter))
+            {
+                query = query.Where(f => f.ContentType.StartsWith(selectedTypeFilter, StringComparison.OrdinalIgnoreCase));
+            }
+
+            query = selectedSort switch
+            {
+                "date_asc" => query.OrderBy(f => f.CreatedAt),
+                "name_asc" => query.OrderBy(f => f.FileName),
+                "size_desc" => query.OrderByDescending(f => f.SizeBytes),
+                _ => query.OrderByDescending(f => f.CreatedAt)
+            };
+
+            return query.ToList();
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (state.User.Identity != null && state.User.Identity.IsAuthenticated)
+        {
+            currentUser = await AuthService.GetUserByUsernameAsync(state.User.Identity.Name!);
+            if (currentUser != null)
+            {
+                await RefreshFileList();
+            }
+        }
+    }
+
+    private async Task RefreshFileList()
+    {
+        if (currentUser == null) return;
+        userFiles = await FileStorageService.GetUserFilesAsync(currentUser.Id);
+        selectedFileIds.Clear();
+    }
+
+    private void OnInputFileChange(InputFileChangeEventArgs e)
+    {
+        selectedUploadFile = e.File;
+    }
+
+    private async Task UploadSelectedFile()
+    {
+        if (selectedUploadFile == null || currentUser == null) return;
+
+        if (selectedUploadFile.Size > 50 * 1024 * 1024)
+        {
+            statusMessage = "Upload error: File exceeds maximum allowed size of 50 MB.";
+            return;
+        }
+
+        isUploading = true;
+        try
+        {
+            using var ms = new MemoryStream();
+            await selectedUploadFile.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024).CopyToAsync(ms);
+            byte[] fileBytes = ms.ToArray();
+
+            var (isSuccess, message, record) = await FileStorageService.UploadFileAsync(
+                currentUser, selectedUploadFile.Name, selectedUploadFile.ContentType, fileBytes);
+
+            statusMessage = message;
+            if (isSuccess && record != null)
+            {
+                if (!string.IsNullOrWhiteSpace(uploadTags))
+                    await FileStorageService.SetFileTagsAsync(record.Id, currentUser.Id, uploadTags);
+                showUploadModal = false;
+                selectedUploadFile = null;
+                uploadTags = string.Empty;
+                await RefreshFileList();
+            }
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"Upload error: {ex.Message}";
+        }
+        finally
+        {
+            isUploading = false;
+        }
+    }
+
+    private void PreviewFile(FileRecord file)
+    {
+        targetActionFile = file;
+        targetVersionId = null;
+        pendingActionType = ActionTypePending.View;
+        verificationActionType = "View";
+        actionContextDescription = $"Preview '{file.FileName}'";
+        showActionModal = true;
+    }
+
+    private void TriggerUpload()
+    {
+        verificationActionType = "Upload";
+        pendingActionType = ActionTypePending.Upload;
+        actionContextDescription = "Upload and encrypt a new file";
+        showActionModal = true;
+    }
+
+    private void DownloadFile(FileRecord file)
+    {
+        targetActionFile = file;
+        targetVersionId = null;
+        pendingActionType = ActionTypePending.Download;
+        verificationActionType = "Download";
+        actionContextDescription = $"Decrypt and download '{file.FileName}'";
+        showActionModal = true;
+    }
+
+    private void TriggerUpdate(FileRecord file)
+    {
+        targetActionFile = file;
+        targetVersionId = null;
+        pendingActionType = ActionTypePending.Update;
+        verificationActionType = "Update";
+        actionContextDescription = $"Open '{file.FileName}' for editing";
+        showActionModal = true;
+    }
+
+    private void ConfirmDeleteFile(FileRecord file)
+    {
+        targetActionFile = file;
+        pendingActionType = ActionTypePending.Delete;
+        showDeleteConfirmModal = true;
+    }
+
+    private void TriggerBulkDelete()
+    {
+        pendingActionType = ActionTypePending.BulkDelete;
+        showDeleteConfirmModal = true;
+    }
+
+    private Task ConfirmAndExecuteDelete()
+    {
+        showDeleteConfirmModal = false;
+        if (currentUser == null) return Task.CompletedTask;
+        verificationActionType = "Move to Trash";
+        actionContextDescription = pendingActionType == ActionTypePending.BulkDelete
+            ? $"Move {selectedFileIds.Count} selected file(s) to Trash"
+            : $"Move '{targetActionFile?.FileName}' to Trash";
+        showActionModal = true;
+        return Task.CompletedTask;
+    }
+
+    private async Task ExecuteVerifiedAction()
+    {
+        if (currentUser == null) return;
+
+        var completedAction = pendingActionType;
+        var file = targetActionFile;
+        var versionId = targetVersionId;
+
+        // Clear the pending action before performing work so a repeated callback
+        // cannot execute the same operation twice.
+        pendingActionType = ActionTypePending.None;
+        targetActionFile = null;
+        targetVersionId = null;
+
+        try
+        {
+            switch (completedAction)
+            {
+                case ActionTypePending.Upload:
+                    showUploadModal = true;
+                    return;
+
+                case ActionTypePending.Update:
+                    if (file == null) return;
+                    Navigation.NavigateTo($"editor/{file.Id}");
+                    return;
+
+                case ActionTypePending.View:
+                    if (file == null) return;
+                    var (previewSuccess, previewMessage, previewContent, _, _) =
+                        await FileStorageService.DownloadFileAsync(currentUser, file.Id);
+                    if (previewSuccess && previewContent != null)
+                    {
+                        previewFileRecord = file;
+                        previewBytes = previewContent;
+                        showPreviewModal = true;
+                    }
+                    else
+                    {
+                        statusMessage = previewMessage;
+                    }
+                    return;
+
+                case ActionTypePending.Download:
+                    if (file == null) return;
+                    var (downloadSuccess, downloadMessage, downloadBytes, downloadName, downloadType) =
+                        await FileStorageService.DownloadFileAsync(currentUser, file.Id);
+                    if (downloadSuccess && downloadBytes != null)
+                    {
+                        await JS.InvokeVoidAsync(
+                            "fileDownloadInterop.downloadFileFromBytes",
+                            downloadName,
+                            downloadType,
+                            Convert.ToBase64String(downloadBytes));
+                        statusMessage = $"Decrypted and downloaded '{downloadName}'.";
+                    }
+                    else
+                    {
+                        statusMessage = downloadMessage;
+                    }
+                    return;
+
+                case ActionTypePending.RestoreVersion:
+                    if (file == null || !versionId.HasValue) return;
+                    var (restoreSuccess, restoreMessage) = await FileStorageService.RestoreVersionAsync(
+                        file.Id, versionId.Value, currentUser.Id);
+                    statusMessage = restoreMessage;
+                    if (restoreSuccess)
+                    {
+                        showVersionModal = false;
+                        await RefreshFileList();
+                    }
+                    return;
+
+                case ActionTypePending.Delete:
+                    if (file == null) return;
+                    await FileStorageService.SoftDeleteFileAsync(file.Id, currentUser.Id);
+                    statusMessage = $"File '{file.FileName}' moved to Trash.";
+                    await RefreshFileList();
+                    return;
+
+                case ActionTypePending.BulkDelete:
+                    var count = selectedFileIds.Count;
+                    foreach (var id in selectedFileIds.ToList())
+                        await FileStorageService.SoftDeleteFileAsync(id, currentUser.Id);
+                    statusMessage = $"Moved {count} files to Trash.";
+                    await RefreshFileList();
+                    return;
+            }
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"The verified operation failed: {ex.Message}";
+        }
+    }
+
+    private void OpenTagModal(FileRecord file)
+    {
+        tagTargetFile = file;
+        tagEditor = file.Tags;
+        showTagModal = true;
+    }
+
+    private async Task SaveTags()
+    {
+        if (currentUser == null || tagTargetFile == null) return;
+        await FileStorageService.SetFileTagsAsync(tagTargetFile.Id, currentUser.Id, tagEditor);
+        tagTargetFile.Tags = string.Join(",", (tagEditor ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Distinct(StringComparer.OrdinalIgnoreCase).Take(20));
+        showTagModal = false;
+        statusMessage = "File tags updated.";
+        await RefreshFileList();
+    }
+
+    private async Task OpenVersionModal(FileRecord file)
+    {
+        if (currentUser == null) return;
+        versionTargetFile = file;
+        activeFileVersions = await FileStorageService.GetFileVersionsAsync(file.Id, currentUser.Id);
+        showVersionModal = true;
+    }
+
+    private void RestoreFileVersion(int versionId)
+    {
+        if (versionTargetFile == null) return;
+
+        targetActionFile = versionTargetFile;
+        targetVersionId = versionId;
+        pendingActionType = ActionTypePending.RestoreVersion;
+        verificationActionType = "Restore";
+        actionContextDescription = $"Restore a previous version of '{versionTargetFile.FileName}'";
+        showActionModal = true;
+    }
+
+    private async Task OpenShareModal(FileRecord file)
+    {
+        if (currentUser == null)
+            return;
+
+        shareTargetFile = file;
+        generatedShareUrl = string.Empty;
+        copyMessage = string.Empty;
+
+        shareExpiryHours = null;
+        shareMaxCount = null;
+        sharePassword = string.Empty;
+
+        activeShareLinks =
+            await ShareLinkService.GetShareLinksForFileAsync(
+                file.Id,
+                currentUser.Id);
+
+        showShareModal = true;
+    }
+
+    private string GetShareUrl(string token)
+    {
+        return $"{Navigation.BaseUri.TrimEnd('/')}/share/{token}";
+    }
+
+    private async Task CopyShareLink(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            copyMessage = "No share link is available.";
+            return;
+        }
+
+        try
+        {
+            await JS.InvokeVoidAsync(
+                "navigator.clipboard.writeText",
+                url);
+
+            copyMessage = "Share link copied successfully!";
+        }
+        catch
+        {
+            copyMessage =
+                "Automatic copying failed. Select the URL and copy it manually.";
+        }
+    }
+
+    private async Task CreateShareLink()
+    {
+        if (shareTargetFile == null || currentUser == null)
+            return;
+
+        if (shareExpiryHours.HasValue && shareExpiryHours.Value <= 0)
+        {
+            copyMessage = "Expiry hours must be greater than zero.";
+            return;
+        }
+
+        if (shareMaxCount.HasValue && shareMaxCount.Value <= 0)
+        {
+            copyMessage = "Download limit must be greater than zero.";
+            return;
+        }
+
+        DateTime? expiresAt = shareExpiryHours.HasValue
+            ? DateTime.UtcNow.AddHours(shareExpiryHours.Value)
+            : null;
+
+        var link = await ShareLinkService.CreateShareLinkAsync(
+            shareTargetFile.Id,
+            currentUser.Id,
+            expiresAt,
+            shareMaxCount,
+            sharePassword);
+
+        generatedShareUrl = GetShareUrl(link.Token);
+        copyMessage = "Link generated. Click Copy to copy it.";
+
+        activeShareLinks =
+            await ShareLinkService.GetShareLinksForFileAsync(
+                shareTargetFile.Id,
+                currentUser.Id);
+    }
+
+    private async Task RevokeLink(int linkId)
+    {
+        if (currentUser == null || shareTargetFile == null)
+            return;
+
+        bool revoked = await ShareLinkService.RevokeShareLinkAsync(
+            linkId,
+            currentUser.Id);
+
+        if (revoked)
+        {
+            copyMessage = "Share link revoked.";
+
+            activeShareLinks =
+                await ShareLinkService.GetShareLinksForFileAsync(
+                    shareTargetFile.Id,
+                    currentUser.Id);
+
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void ToggleSelectAll(ChangeEventArgs e)
+    {
+        bool isChecked = (bool)(e.Value ?? false);
+        if (isChecked)
+        {
+            selectedFileIds = FilteredFiles.Select(f => f.Id).ToHashSet();
+        }
+        else
+        {
+            selectedFileIds.Clear();
+        }
+    }
+
+    private void ToggleSelectFile(int fileId, bool isChecked)
+    {
+        if (isChecked) selectedFileIds.Add(fileId);
+        else selectedFileIds.Remove(fileId);
+    }
+
+    private static bool IsEditable(string name)
+    {
+        return name.EndsWith(".md", StringComparison.OrdinalIgnoreCase) || 
+               name.EndsWith(".txt", StringComparison.OrdinalIgnoreCase) || 
+               name.EndsWith(".html", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string FormatFileSize(long bytes)
+    {
+        if (bytes >= 1024 * 1024) return $"{(bytes / (1024.0 * 1024.0)):F2} MB";
+        return $"{(bytes / 1024.0):F1} KB";
+    }
+}

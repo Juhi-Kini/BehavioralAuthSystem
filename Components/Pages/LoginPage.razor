@@ -1,0 +1,221 @@
+@page "/login"
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+
+<PageTitle>Login - BehavioralAuthSystem</PageTitle>
+
+<div class="container py-5" style="max-width: 500px;">
+    <div class="vault-card">
+        <div class="text-center mb-4">
+            <div class="d-inline-flex align-items-center justify-content-center p-3 rounded-circle bg-teal-subtle text-teal mb-3" style="width: 56px; height: 56px;">
+                <svg width="28" height="28" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                </svg>
+            </div>
+            <h2 class="text-primary mb-1">Vault Login</h2>
+            <p class="text-muted small">
+                Password Credentials + Keystroke Dynamics 2FA Verification
+            </p>
+        </div>
+
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="alert alert-danger mb-4 small d-flex align-items-start gap-2" role="alert">
+                <span class="fs-5 lh-1">⚠️</span>
+                <div>
+                    <strong>Authentication Failed:</strong> @errorMessage
+                </div>
+            </div>
+        }
+
+        @if (lastBioResult != null)
+        {
+            <div class="alert @(lastBioResult.IsPassed ? "alert-success" : "alert-warning") mb-4 small">
+                <div class="fw-bold mb-1 d-flex align-items-center gap-2">
+                    <span>@(lastBioResult.IsPassed ? "✅ Biometric Verification Passed" : "❌ Biometric Verification Failed")</span>
+                </div>
+                <div class="mb-2">@lastBioResult.Message</div>
+                <div class="d-flex justify-content-between p-2 rounded bg-body-tertiary" style="font-size: 0.75rem;">
+                    <span>Confidence: <strong>@lastBioResult.ConfidenceScore.ToString("F1")%</strong></span>
+                    <span>Distance (Z): <strong>@lastBioResult.ZScore.ToString("F2")</strong></span>
+                    <span>Adaptive Cutoff: <strong>@lastBioResult.AdaptiveZThreshold.ToString("F2")</strong></span>
+                </div>
+                @if (lastBioResult.IsAnomalous)
+                {
+                    <div class="mt-2 text-danger fw-bold d-flex align-items-center gap-1" style="font-size: 0.75rem;">
+                        <span>🚨 Security Anomaly Flag: Rhythm deviated > 2.5 standard deviations from history.</span>
+                    </div>
+                }
+            </div>
+        }
+
+        <EditForm Model="@loginModel" OnValidSubmit="@HandleLogin">
+            <div class="mb-3">
+                <label class="form-label fw-semibold small">Username</label>
+                <input type="text" class="form-control form-control-vault" @bind="loginModel.Username" placeholder="Enter your username" required disabled="@isSubmitting" autocomplete="username" />
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label fw-semibold small">Password (Keystroke Timed)</label>
+                <input id="login-pwd-input" 
+                       type="password" 
+                       class="form-control form-control-vault" 
+                       placeholder="Type your password..." 
+                       @bind="loginModel.Password" 
+                       @bind:event="oninput" 
+                       required 
+                       disabled="@isSubmitting"
+                       autocomplete="current-password" />
+            </div>
+
+            <!-- Waveform Animation Box -->
+            <div class="mb-3">
+                <div class="d-flex justify-content-between text-muted mb-1" style="font-size: 0.725rem;">
+                    <span>Live Keystroke Timing Waveform</span>
+                    <span>Hold (Teal) / Latency (Amber)</span>
+                </div>
+                <div class="waveform-box">
+                    <svg id="login-pwd-input-waveform" style="width: 100%; height: 100%;"></svg>
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-vault w-100 py-2 mt-2" disabled="@isSubmitting">
+                @if (isSubmitting)
+                {
+                    <span class="spinner-border spinner-border-sm me-2"></span>
+                    <span>Verifying Cryptographic & Biometric Factors...</span>
+                }
+                else
+                {
+                    <span>Authenticate & Access Vault</span>
+                }
+            </button>
+        </EditForm>
+
+        <div class="text-center mt-3">
+            <a href="/forgot-password" class="small text-primary fw-semibold text-decoration-none">
+                Forgot your password? Reset by email →
+            </a>
+        </div>
+
+        <div class="text-center mt-4 pt-3 border-top border-color">
+            <small class="text-muted">Don't have an enrolled biometric account?</small>
+            <br />
+            <a href="register" class="small text-primary fw-semibold text-decoration-none">Register & Enroll Biometrics →</a>
+        </div>
+    </div>
+</div>
+
+@code {
+    private LoginModel loginModel = new LoginModel();
+    private string errorMessage = string.Empty;
+    private bool isSubmitting = false;
+    private VerificationResult? lastBioResult;
+    private DotNetObjectReference<LoginPage>? dotNetRef;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                dotNetRef = DotNetObjectReference.Create(this);
+                await JS.InvokeVoidAsync("keystrokeCapture.attach", "login-pwd-input", dotNetRef);
+            }
+            catch { }
+        }
+    }
+
+    [JSInvokable]
+    public void OnKeystrokeCaptured(KeystrokeSample sample)
+    {
+        // Handled live by keystrokeCapture
+    }
+
+    private async Task HandleLogin()
+    {
+        if (string.IsNullOrWhiteSpace(loginModel.Username) || string.IsNullOrWhiteSpace(loginModel.Password))
+        {
+            errorMessage = "Please enter both username and password.";
+            return;
+        }
+
+        isSubmitting = true;
+        errorMessage = string.Empty;
+        lastBioResult = null;
+
+        try
+        {
+            var keystrokeData = await JS.InvokeAsync<KeystrokeSample>("keystrokeCapture.getTimingData", "login-pwd-input");
+
+            if (keystrokeData == null || keystrokeData.HoldTimes.Count == 0)
+            {
+                errorMessage = "No keystroke dynamics timings captured. Please type your password directly in the field.";
+                isSubmitting = false;
+                return;
+            }
+
+            // Post directly to the secure /api/auth/login endpoint from browser
+            var res = await JS.InvokeAsync<LoginInteropResult>("authInterop.login", loginModel.Username, loginModel.Password, keystrokeData);
+
+            if (res.Ok && res.Data?.Success == true)
+            {
+                lastBioResult = res.Data.BiometricResult;
+                StateHasChanged();
+                await Task.Delay(400);
+                Navigation.NavigateTo("", forceLoad: true);
+            }
+            else
+            {
+                errorMessage = res.Data?.Message ?? "Authentication failed.";
+                lastBioResult = res.Data?.BiometricResult;
+                loginModel.Password = string.Empty;
+                await JS.InvokeVoidAsync("keystrokeCapture.reset", "login-pwd-input");
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = $"Authentication error: {ex.Message}";
+        }
+        finally
+        {
+            isSubmitting = false;
+            StateHasChanged();
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("keystrokeCapture.detach", "login-pwd-input");
+        }
+        catch { }
+
+        dotNetRef?.Dispose();
+    }
+
+    public class LoginModel
+    {
+        public string Username { get; set; } = string.Empty;
+        public string Password { get; set; } = string.Empty;
+    }
+
+    public class LoginInteropResult
+    {
+        public int Status { get; set; }
+        public bool Ok { get; set; }
+        public LoginResponseData? Data { get; set; }
+    }
+
+    public class LoginResponseData
+    {
+        public bool Success { get; set; }
+        public bool IsLockedOut { get; set; }
+        public string Message { get; set; } = string.Empty;
+        public int? UserId { get; set; }
+        public string? Username { get; set; }
+        public VerificationResult? BiometricResult { get; set; }
+    }
+}

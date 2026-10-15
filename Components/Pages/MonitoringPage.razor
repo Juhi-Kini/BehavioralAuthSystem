@@ -1,0 +1,17 @@
+@page "/monitoring"
+@attribute [Authorize]
+@implements IDisposable
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IAuthService AuthService
+
+<PageTitle>Real-Time Monitoring - BehavioralAuthSystem</PageTitle>
+<div class="container-fluid p-0">
+    <div class="d-flex justify-content-between align-items-center mb-4"><div><h2 class="text-primary m-0">Real-Time Security Monitoring</h2><p class="text-muted small m-0">Live view of recent authentication and behavioral verification events.</p></div><span class="badge bg-success-subtle text-success border">● Live</span></div>
+    <div class="row g-3 mb-4"><div class="col-md-4"><div class="vault-card"><span class="text-muted small">EVENTS</span><h2>@logs.Count</h2></div></div><div class="col-md-4"><div class="vault-card"><span class="text-muted small">FAILED</span><h2 class="text-danger">@logs.Count(x => !x.IsSuccessful)</h2></div></div><div class="col-md-4"><div class="vault-card"><span class="text-muted small">ANOMALIES</span><h2 class="text-warning">@logs.Count(x => x.IsSuspicious)</h2></div></div></div>
+    <div class="vault-card"><h5 class="text-primary">Latest Events</h5><div class="table-responsive"><table class="table small"><thead><tr><th>Time</th><th>Action</th><th>Status</th><th>Confidence</th><th>Risk</th></tr></thead><tbody>@foreach(var x in logs.OrderByDescending(x=>x.AttemptTime).Take(30)){<tr><td>@x.AttemptTime.ToLocalTime().ToString("HH:mm:ss")</td><td>@x.ActionType</td><td>@(x.IsSuccessful?"Success":"Failed")</td><td>@x.Score.ToString("F1")%</td><td>@(x.IsSuspicious?"⚠️ Suspicious":"Normal")</td></tr>}</tbody></table></div></div>
+</div>
+@code {
+    private User? user; private List<AuthLog> logs = new(); private Timer? timer;
+    protected override async Task OnInitializedAsync(){var s=await AuthStateProvider.GetAuthenticationStateAsync(); if(s.User.Identity?.IsAuthenticated==true){user=await AuthService.GetUserByUsernameAsync(s.User.Identity.Name!); if(user!=null) logs=await AuthService.GetUserAuthLogsAsync(user.Id);} timer=new Timer(async _=>await InvokeAsync(async()=>{if(user!=null)logs=await AuthService.GetUserAuthLogsAsync(user.Id);StateHasChanged();}),null,5000,5000);}
+    public void Dispose()=>timer?.Dispose();
+}

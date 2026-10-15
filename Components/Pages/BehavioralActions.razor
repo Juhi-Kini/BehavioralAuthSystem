@@ -1,0 +1,571 @@
+@page "/behavioral-actions"
+@attribute [Authorize]
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IAuthService AuthService
+@inject IBehavioralPatternService BehavioralPatternService
+@inject IJSRuntime JS
+
+<PageTitle>Behavioral Actions - BehavioralAuthSystem</PageTitle>
+
+<div class="behavioral-page">
+    <div class="page-header">
+        <div>
+            <div class="eyebrow">🧠 MULTI-MODAL BIOMETRICS</div>
+            <h1>Behavioral Actions</h1>
+            <p>Configure behavioral patterns for protected file operations.</p>
+        </div>
+        <span class="header-badge"><span class="status-dot"></span> Behavioral Security</span>
+    </div>
+
+    <div class="info-card">
+        <div class="info-icon">🛡️</div>
+        <div>
+            <h3>How behavioral protection works</h3>
+            <p>Select an action and a pattern. Capture starts automatically; save the pattern after the interaction is recognized.</p>
+            <div class="security-points">
+                <span>✓ Action-specific protection</span>
+                <span>✓ Four interaction patterns</span>
+                <span>✓ Verification before protected operations</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="setup-card">
+        <div class="section-title"><span>01</span><div><h2>Select Protected Action</h2><p>Choose the file operation this pattern should protect.</p></div></div>
+        <div class="action-grid">
+            @foreach (var action in Actions)
+            {
+                <button type="button" class="action-option @(SelectedAction == action.Name ? "selected" : "")" @onclick="() => SelectAction(action.Name)">
+                    <span class="action-icon @action.Css">@action.Icon</span>
+                    <span><strong>@action.Name</strong><small>@action.Description</small></span>
+                    @if (SelectedAction == action.Name) { <span class="selected-check">✓</span> }
+                </button>
+            }
+        </div>
+
+        <div class="section-title second"><span>02</span><div><h2>Choose Behavioral Pattern</h2><p>Choose how you want to authorize <strong>@SelectedAction</strong>.</p></div></div>
+        <div class="pattern-grid">
+            @foreach (var pattern in Patterns)
+            {
+                <button type="button" class="pattern-card @(SelectedPattern == pattern.Name ? "selected" : "")" @onclick="() => SelectPattern(pattern.Name)">
+                    <div class="pattern-icon">@pattern.Icon</div>
+                    <div class="pattern-text"><h3>@pattern.Name</h3><p>@pattern.Description</p><span class="pattern-detail">@pattern.Detail</span></div>
+                    @if (SelectedPattern == pattern.Name) { <span class="pattern-check">✓</span> }
+                </button>
+            }
+        </div>
+
+        <div class="section-title second"><span>03</span><div><h2>Capture Pattern</h2><p>@Instruction</p></div><span class="record-status @(IsRecording ? "recording" : IsRecorded ? "captured" : "")">● @(IsRecording ? "Capture in progress" : IsRecorded ? "Captured" : "Ready")</span></div>
+
+        @if (SelectedPattern == "Mouse Clicks")
+        {
+            <div class="click-settings">
+
+                <div class="click-setting">
+
+                    <label>
+                        Click Type
+                    </label>
+
+                    <select class="form-select"
+                            @bind="SelectedClickType">
+
+                        <option value="Left">
+                            Left Click
+                        </option>
+
+                        <option value="Right">
+                            Right Click
+                        </option>
+
+                    </select>
+
+                </div>
+
+
+                <div class="click-setting">
+
+                    <label>
+                        Number of Clicks
+                    </label>
+
+                    <select class="form-select"
+                            @bind="SelectedClickCount">
+
+                        <option value="3">3 Clicks</option>
+                        <option value="4">4 Clicks</option>
+                        <option value="5">5 Clicks</option>
+
+                    </select>
+
+                </div>
+
+            </div>
+        }
+
+
+        <div id="behavioral-recording-area"
+             class="recording-area @(IsRecording ? "recording" : "")">
+
+            @if (string.IsNullOrWhiteSpace(SelectedPattern))
+            {
+                <div>
+
+                    <div class="large-icon">
+                        🎯
+                    </div>
+
+                    <h3>
+                        Select a pattern above
+                    </h3>
+
+                    <p>
+                        Choose one of the four patterns to begin.
+                    </p>
+
+                </div>
+            }
+
+            else if (SelectedPattern == "Mouse Clicks")
+            {
+                <div>
+
+                    <div class="large-icon">
+                        🖱️
+                    </div>
+
+                    <h3>
+                        Perform Your Click Pattern
+                    </h3>
+
+                    <p>
+                        @SelectedClickType click × @SelectedClickCount
+                    </p>
+
+                    <div class="record-targets">
+
+                        @for (var i = 1; i <= SelectedClickCount; i++)
+                        {
+                            <span>@i</span>
+                        }
+
+                    </div>
+
+                </div>
+            }
+
+            else if (SelectedPattern == "Shape")
+            {
+                <div>
+
+                    <div class="large-icon">
+                        ✏️
+                    </div>
+
+                    <h3>
+                        Draw Your Shape
+                    </h3>
+
+                    <p>
+                        Draw a Circle, Square, Triangle, Line or Zigzag.
+                    </p>
+
+                    <div class="draw-guide">
+                        DRAW HERE
+                    </div>
+
+                </div>
+            }
+
+            else if (SelectedPattern == "Shortcut")
+            {
+                <div>
+
+                    <div class="large-icon">
+                        ⌨️
+                    </div>
+
+                    <h3>
+                        Keyboard Shortcut
+                    </h3>
+
+                    <p>
+                        Press a shortcut such as Ctrl + S.
+                    </p>
+
+                    <div class="shortcut-guide">
+                        Ctrl + ?
+                    </div>
+
+                </div>
+            }
+
+            else if (SelectedPattern == "Key Sequence")
+            {
+                <div>
+
+                    <div class="large-icon">
+                        🔢
+                    </div>
+
+                    <h3>
+                        Key Sequence
+                    </h3>
+
+                    <p>
+                        Type 2–8 keys one after another.
+                    </p>
+
+                    <div class="shortcut-guide">
+                        J → U → H → I
+                    </div>
+
+                </div>
+            }
+
+        </div>
+        <div class="capture-help" role="status">
+            @if (IsRecording)
+            {
+                <span>● Capture is active. Perform your selected interaction in the area above.</span>
+            }
+            else if (IsRecorded)
+            {
+                <span>✓ Pattern recognized. Save it below, or capture it again.</span>
+            }
+            else if (!string.IsNullOrWhiteSpace(SelectedPattern) && !_capturePending)
+            {
+                <button type="button" class="btn-capture-again" @onclick="CaptureAgain">↻ Try Capture Again</button>
+            }
+            else
+            {
+                <span>Select a pattern to begin automatic capture.</span>
+            }
+            @if (IsRecorded)
+            {
+                <button type="button" class="btn-capture-again" @onclick="CaptureAgain">↻ Capture Again</button>
+            }
+        </div>
+
+        <div class="preview-card">
+            <div class="preview-icon">👁️</div>
+            <div><h3>Pattern Preview</h3>
+                @if (IsRecorded)
+                {
+                    <p class="success-text">✓ Pattern captured and ready to save.</p>
+                    <div class="preview-details"><span><strong>Action:</strong> @SelectedAction</span><span><strong>Pattern:</strong> @SelectedPattern</span></div>
+                }
+                else if (IsRecording) { <p class="text-muted">Waiting for your interaction to finish...</p> }
+                else { <p class="text-muted">Choose a pattern. Capture starts automatically.</p> }
+            </div>
+        </div>
+
+        <div class="bottom-actions">
+            <button class="btn-skip" @onclick="SkipPattern">Skip for now</button>
+            <button class="btn-save" @onclick="SavePattern" disabled="@(!IsRecorded || IsSaving)">✓ @(IsSaving ? "Saving..." : "Save Behavioral Pattern")</button>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(Message))
+        {
+            <div class="message-box @(MessageType == "success" ? "message-success" : "message-info")">@Message</div>
+        }
+    </div>
+
+    <div class="security-note">🔒 <div><strong>Protected actions:</strong> Create, Upload, Update, View, Download, Restore, Move to Trash and Purge. Restore from Trash and Restore Previous Version share the same Restore pattern. Patterns are stored as structured behavioral data, not as a secret phrase.</div></div>
+
+    <div class="setup-card mt-4">
+        <div class="section-title"><span>04</span><div><h2>Enrollment Status</h2><p>Patterns currently saved for your account.</p></div></div>
+        <div class="status-grid">
+            @foreach (var action in Actions)
+            {
+                var p = SavedPatterns.FirstOrDefault(x => x.ActionType == action.Name);
+                <div class="status-item"><strong>@action.Name</strong><span class="badge @(p == null ? "bg-secondary" : "bg-success")">@(p == null ? "Not enrolled" : p.PatternType)</span></div>
+            }
+        </div>
+    </div>
+</div>
+
+<style>
+    .behavioral-page{max-width:1280px;margin:auto;padding:28px;font-family:"IBM Plex Sans",sans-serif}.page-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px}.eyebrow{color:#0d9488;font-size:12px;font-weight:700;letter-spacing:1.2px}.page-header h1{margin:5px 0;color:#1464e8;font-family:"Fraunces",Georgia,serif;font-size:42px}.page-header p{color:#64748b}.header-badge{padding:10px 16px;border:1px solid #bde8e3;border-radius:30px;color:#0d9488}.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#0d9488}.info-card,.setup-card,.security-note{border:1px solid #dbe5ef;border-radius:20px;background:var(--bs-body-bg,#fff);padding:24px;margin-bottom:24px}.info-card{display:flex;gap:18px;background:linear-gradient(110deg,rgba(13,148,136,.08),rgba(255,255,255,.8))}.info-icon{font-size:28px}.info-card h3,.section-title h2{margin:0 0 5px}.info-card p,.section-title p{color:#64748b;margin:0}.security-points{display:flex;gap:22px;flex-wrap:wrap;margin-top:16px;color:#36556f}.security-points span{color:#0d9488}.section-title{display:flex;align-items:flex-start;gap:14px;margin-bottom:18px}.section-title>span:first-child{background:#dff5f2;color:#0d9488;border-radius:10px;padding:8px 11px;font-weight:700}.section-title.second{margin-top:30px;border-top:1px solid #e5e7eb;padding-top:26px}.record-status{margin-left:auto;color:#64748b}.record-status.recording{color:#dc2626}.record-status.captured{color:#15803d}.action-grid,.pattern-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}.action-option,.pattern-card{border:1px solid #dbe5ef;border-radius:15px;background:transparent;text-align:left;padding:18px;display:flex;align-items:center;gap:13px;position:relative}.action-option.selected,.pattern-card.selected{border-color:#0d9488;background:#effaf8;box-shadow:0 0 0 1px #0d9488}.action-option small,.pattern-card p{display:block;color:#64748b;margin:3px 0 0}.action-icon,.pattern-icon{font-size:22px;background:#eef7ff;padding:9px;border-radius:12px}.selected-check,.pattern-check{margin-left:auto;color:#0d9488;font-weight:700}.recording-area{min-height:250px;border:2px dashed #cbd5e1;border-radius:18px;display:flex;align-items:center;justify-content:center;text-align:center;color:#64748b;user-select:none;touch-action:none}.recording-area.recording{border-color:#0d9488;background:rgba(13,148,136,.05)}.large-icon{font-size:42px}.record-targets{display:flex;gap:14px;justify-content:center;margin-top:18px}.record-targets span,.tap-guide,.shortcut-guide{display:inline-flex;width:54px;height:54px;border-radius:50%;align-items:center;justify-content:center;background:#e6f7f4;color:#0d9488;font-weight:700}.draw-guide{margin:18px auto 0;width:260px;height:100px;border:1px dashed #0d9488;border-radius:15px;display:flex;align-items:center;justify-content:center}.shortcut-guide{width:auto;padding:0 22px;border-radius:12px}.capture-help{display:flex;justify-content:center;align-items:center;gap:12px;flex-wrap:wrap;margin:18px 0;color:#64748b;text-align:center}.btn-capture-again,.btn-save,.btn-skip{border:0;border-radius:10px;padding:11px 18px}.btn-capture-again{background:#e6f7f4;color:#0d9488}.btn-save{background:#0d9488;color:white}.btn-skip{background:#f1f5f9;color:#475569}.preview-card{display:flex;gap:15px;background:#f8fafc;border-radius:14px;padding:18px;margin-top:20px}.preview-icon{font-size:24px}.success-text{color:#15803d}.preview-details,.status-grid{display:flex;gap:18px;flex-wrap:wrap}.bottom-actions{display:flex;justify-content:space-between;align-items:center;margin-top:20px}.message-box{padding:12px;border-radius:10px;margin-top:15px}.message-success{background:#ecfdf5;color:#047857}.message-info{background:#eff6ff;color:#1d4ed8}.status-grid{display:grid;grid-template-columns:repeat(4,1fr)}.status-item{padding:14px;border:1px solid #e2e8f0;border-radius:12px;display:flex;flex-direction:column;gap:8px}.security-note{display:flex;gap:12px;color:#36556f}@@media(max-width:1000px){.action-grid,.pattern-grid,.status-grid{grid-template-columns:repeat(2,1fr)}}@@media(max-width:700px){.behavioral-page{padding:18px}.page-header{flex-direction:column;gap:12px}.action-grid,.pattern-grid,.status-grid{grid-template-columns:1fr}.bottom-actions,.capture-help{flex-direction:column}.btn-save,.btn-skip,.btn-capture-again{width:100%}}
+</style>
+
+@code {
+    private User? currentUser;
+    private string SelectedAction = "Create";
+    private string SelectedPattern = string.Empty;
+    private bool IsRecording;
+    private bool IsRecorded;
+    private bool IsSaving;
+    private bool _capturePending;
+    private int _captureSessionId;
+    private string Message = string.Empty;
+    private string MessageType = "info";
+    private BehavioralCapture? Captured;
+    private List<BehavioralPattern> SavedPatterns = new();
+    private string SelectedClickType = "Left";
+    private int SelectedClickCount = 3;
+
+    // These action names are persisted as ActionType, so keep them consistent
+    // with the ActionType strings used by verification and protected operations.
+    private readonly (string Name, string Icon, string Description, string Detail, string Css)[] Actions =
+    {
+        ("Create", "＋", "Create a new document", "New file", "create-icon"),
+        ("Upload", "↑", "Upload an encrypted file", "Encrypted upload", "upload-icon"),
+        ("Update", "✎", "Edit an existing file", "Existing file", "update-icon"),
+        ("View", "◉", "Preview a stored file", "File preview", "view-icon"),
+        ("Download", "↓", "Download a decrypted file", "File download", "download-icon"),
+        ("Restore", "↶", "Restore a file or previous version", "Restore file/version", "restore-icon"),
+        ("Move to Trash", "⌫", "Move a file to Trash", "Reversible deletion", "delete-icon"),
+        ("Purge", "×", "Permanently delete a trashed file", "Permanent deletion", "purge-icon")
+    };
+
+    private readonly (string Name, string Icon, string Description, string Detail)[] Patterns =
+    {
+        ("Mouse Clicks", "🖱️", "Choose left or right click and a number of clicks.", "Left/Right + 3–5 clicks"),
+        ("Shape", "✏️", "Draw a simple shape that the system will identify.", "Circle / Square / Triangle / Line / Zigzag"),
+        ("Shortcut", "⌨️", "Use a keyboard shortcut such as Ctrl + S.", "Key combination"),
+        ("Key Sequence", "🔢", "Press a sequence of keys one after another.", "Example: J → U → H → I")
+    };
+
+    private string Instruction => string.IsNullOrWhiteSpace(SelectedPattern)
+        ? "Select a pattern above."
+        : SelectedPattern == "Mouse Clicks"
+            ? $"Capture starts automatically. Perform {SelectedClickCount} {SelectedClickType.ToLowerInvariant()} clicks in the area."
+            : SelectedPattern switch
+            {
+                "Shape" => "Capture starts automatically. Draw one clear shape in the area.",
+                "Shortcut" => "Capture starts automatically. Press your chosen keyboard shortcut.",
+                "Key Sequence" => "Capture starts automatically. Press 2–8 keys one after another.",
+                _ => $"Capture your {SelectedPattern} pattern naturally."
+            };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (state.User.Identity?.IsAuthenticated == true)
+        {
+            currentUser = await AuthService.GetUserByUsernameAsync(state.User.Identity.Name!);
+            if (currentUser != null)
+                SavedPatterns = await BehavioralPatternService.GetPatternsAsync(currentUser.Id);
+        }
+    }
+
+    protected override Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_capturePending)
+        {
+            _capturePending = false;
+            _ = CapturePatternAutomatically();
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private async Task SelectAction(string action)
+    {
+        await CancelCurrentCapture();
+        SelectedAction = action;
+        IsRecorded = false;
+        Captured = null;
+        Message = string.Empty;
+        MessageType = "info";
+        _capturePending = !string.IsNullOrWhiteSpace(SelectedPattern);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task SelectPattern(string pattern)
+    {
+        await CancelCurrentCapture();
+        SelectedPattern = pattern;
+        IsRecorded = false;
+        Captured = null;
+        Message = string.Empty;
+        MessageType = "info";
+
+        if (pattern != "Mouse Clicks")
+        {
+            SelectedClickType = "Left";
+            SelectedClickCount = 3;
+        }
+
+        if (!string.IsNullOrWhiteSpace(pattern))
+            _capturePending = true;
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task CaptureAgain()
+    {
+        if (string.IsNullOrWhiteSpace(SelectedPattern) || IsSaving)
+            return;
+
+        await CancelCurrentCapture();
+        IsRecorded = false;
+        Captured = null;
+        Message = string.Empty;
+        MessageType = "info";
+        _capturePending = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task CancelCurrentCapture()
+    {
+        // Invalidates the result from any capture that was already in progress.
+        _captureSessionId++;
+        IsRecording = false;
+        _capturePending = false;
+
+        try
+        {
+            await JS.InvokeVoidAsync("behavioralCapture.stopAutomatic");
+        }
+        catch (JSException)
+        {
+            // Safe to ignore if JavaScript capture has not started yet.
+        }
+    }
+
+    private async Task CapturePatternAutomatically()
+    {
+        if (string.IsNullOrWhiteSpace(SelectedPattern))
+            return;
+
+        var sessionId = _captureSessionId;
+        var patternAtStart = SelectedPattern;
+        IsRecording = true;
+        IsRecorded = false;
+        Captured = null;
+        Message = $"Waiting for your {patternAtStart} interaction...";
+        MessageType = "info";
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            var capture = await JS.InvokeAsync<BehavioralCapture?>(
+                "behavioralCapture.captureAutomatically",
+                "behavioral-recording-area",
+                patternAtStart);
+
+            // Ignore a stale result if the user changed the action/pattern meanwhile.
+            if (sessionId != _captureSessionId || patternAtStart != SelectedPattern)
+                return;
+
+            IsRecording = false;
+
+            if (capture == null)
+            {
+                Message = "Capture was cancelled. Choose Try Capture Again when ready.";
+                MessageType = "info";
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            var validationMessage = GetCaptureValidationMessage(capture, patternAtStart);
+            if (validationMessage != null)
+            {
+                Captured = null;
+                IsRecorded = false;
+                Message = validationMessage;
+                MessageType = "info";
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            Captured = capture;
+            IsRecorded = true;
+            Message = $"{patternAtStart} pattern captured successfully. Save it to enroll it for {SelectedAction}.";
+            MessageType = "success";
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (JSException)
+        {
+            if (sessionId != _captureSessionId)
+                return;
+
+            IsRecording = false;
+            IsRecorded = false;
+            Captured = null;
+            Message = "Automatic capture could not start. Check that the behavioralCapture JavaScript file is loaded, then try again.";
+            MessageType = "info";
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            if (sessionId != _captureSessionId)
+                return;
+
+            IsRecording = false;
+            IsRecorded = false;
+            Captured = null;
+            Message = $"Capture failed: {ex.Message}";
+            MessageType = "info";
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private string? GetCaptureValidationMessage(BehavioralCapture capture, string pattern)
+    {
+        return pattern switch
+        {
+            "Mouse Clicks" when capture.Clicks.Count != SelectedClickCount =>
+                $"Captured {capture.Clicks.Count} clicks, but {SelectedClickCount} are required. Choose Try Capture Again and perform exactly {SelectedClickCount} clicks.",
+            "Mouse Clicks" when !string.Equals(capture.ClickType, SelectedClickType, StringComparison.OrdinalIgnoreCase) =>
+                $"Please use {SelectedClickType.ToLowerInvariant()} clicks. Choose Try Capture Again to repeat the pattern.",
+            "Shape" when string.IsNullOrWhiteSpace(capture.ShapeType) =>
+                "The shape was not recognized. Choose Try Capture Again and draw one clear shape.",
+            "Shortcut" when string.IsNullOrWhiteSpace(capture.Shortcut.Key) =>
+                "No keyboard shortcut was recognized. Choose Try Capture Again and press a shortcut such as Ctrl + S.",
+            "Key Sequence" when capture.KeySequence.Count < 2 || capture.KeySequence.Count > 8 =>
+                "The key sequence must contain between 2 and 8 keys. Choose Try Capture Again and repeat it.",
+            _ => null
+        };
+    }
+
+    private async Task SavePattern()
+    {
+        if (currentUser == null || Captured == null || !IsRecorded || IsSaving)
+            return;
+
+        var validationMessage = GetCaptureValidationMessage(Captured, SelectedPattern);
+        if (validationMessage != null)
+        {
+            Message = validationMessage;
+            MessageType = "info";
+            return;
+        }
+
+        IsSaving = true;
+        try
+        {
+            await BehavioralPatternService.SavePatternAsync(
+                currentUser.Id,
+                SelectedAction,
+                SelectedPattern,
+                Captured);
+
+            SavedPatterns = await BehavioralPatternService.GetPatternsAsync(currentUser.Id);
+            Message = $"{SelectedPattern} pattern saved for {SelectedAction}.";
+            MessageType = "success";
+            IsRecorded = false;
+            Captured = null;
+        }
+        catch (Exception ex)
+        {
+            Message = $"Could not save the pattern: {ex.Message}";
+            MessageType = "info";
+        }
+        finally
+        {
+            IsSaving = false;
+        }
+    }
+
+    private async Task SkipPattern()
+    {
+        await CancelCurrentCapture();
+        IsRecorded = false;
+        Captured = null;
+        Message = $"Pattern setup skipped for {SelectedAction}. No new pattern was saved.";
+        MessageType = "info";
+    }
+}

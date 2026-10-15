@@ -1,0 +1,590 @@
+@page "/register"
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject IAuthService AuthService
+@inject NavigationManager Navigation
+
+<PageTitle>Register - BehavioralAuthSystem</PageTitle>
+
+<div class="container py-5" style="max-width: 680px;">
+    <div class="vault-card">
+
+        <!-- Header -->
+        <div class="text-center mb-4">
+
+            <div class="d-inline-flex align-items-center justify-content-center p-3 rounded-circle bg-teal-subtle text-teal mb-3"
+                 style="width: 56px; height: 56px;">
+
+                <svg width="28"
+                     height="28"
+                     fill="none"
+                     stroke="currentColor"
+                     viewBox="0 0 24 24">
+
+                    <path stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z">
+                    </path>
+
+                </svg>
+
+            </div>
+
+            <h2 class="text-primary mb-1">
+                Create Secure Account
+            </h2>
+
+            <p class="text-muted small">
+                Enroll your unique keystroke dynamics rhythm for secure biometric authentication
+            </p>
+
+        </div>
+
+
+        <!-- Error Message -->
+        @if (!string.IsNullOrEmpty(errorMessage))
+        {
+            <div class="alert alert-danger mb-4 small d-flex align-items-start gap-2"
+                 role="alert">
+
+                <span class="fs-5 lh-1">⚠️</span>
+
+                <div>
+                    <strong>Enrollment Error:</strong>
+                    @errorMessage
+                </div>
+
+            </div>
+        }
+
+
+        <!-- Success Message -->
+        @if (!string.IsNullOrEmpty(successMessage))
+        {
+            <div class="alert alert-success mb-4 small d-flex align-items-start gap-2"
+                 role="alert">
+
+                <span class="fs-5 lh-1">✅</span>
+
+                <div>
+                    <strong>Success:</strong>
+                    @successMessage
+                </div>
+
+            </div>
+        }
+
+
+        <!-- Registration Progress -->
+        <div class="mb-4">
+
+            <div class="d-flex justify-content-between text-muted small mb-2">
+
+                <span>
+                    Registration Progress
+                </span>
+
+                <span>
+                    Step @CurrentStep of 2
+                </span>
+
+            </div>
+
+            <div class="progress" style="height: 6px;">
+
+                <div class="progress-bar bg-teal"
+                     style="width: @(CurrentStep * 50)%">
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- STEP 1 : MASTER CREDENTIALS -->
+        <div class="mb-4">
+
+            <h6 class="text-teal mb-3 fw-bold">
+                Step 1: Choose Master Credentials
+            </h6>
+
+            <div class="row g-3">
+
+                <!-- Username -->
+                <div class="col-md-6">
+
+                    <label class="form-label fw-semibold small">
+                        Username
+                    </label>
+
+                    <input type="text"
+                           class="form-control form-control-vault"
+                           @bind="regModel.Username"
+                           placeholder="e.g. alice_researcher"
+                           required
+                           disabled="@(passwordSamples.Count > 0 || isSubmitting)" />
+
+                </div>
+
+
+                <!-- Recovery Email -->
+                <div class="col-md-6">
+                    <label class="form-label fw-semibold small">
+                        Recovery Email
+                    </label>
+                    <input type="email"
+                           class="form-control form-control-vault"
+                           @bind="regModel.Email"
+                           placeholder="you@example.com"
+                           required
+                           disabled="@(passwordSamples.Count > 0 || isSubmitting)" />
+                    <small class="text-muted">Used for password recovery.</small>
+                </div>
+
+
+                <!-- Password -->
+                <div class="col-md-6">
+
+                    <label class="form-label fw-semibold small">
+                        Master Password (min 6 chars)
+                    </label>
+
+                    <input type="password"
+                           class="form-control form-control-vault"
+                           @bind="regModel.Password"
+                           placeholder="Enter password"
+                           required
+                           disabled="@(passwordSamples.Count > 0 || isSubmitting)" />
+
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <hr class="my-4 border-color" />
+
+
+        <!-- STEP 2 : PASSWORD BIOMETRIC ENROLLMENT -->
+        <div class="mb-4">
+
+            <div class="d-flex justify-content-between align-items-center mb-2">
+
+                <div>
+
+                    <h6 class="text-teal mb-0 fw-bold">
+                        Step 2: Password Typing Rhythm Enrollment
+                    </h6>
+
+                    <small class="text-muted">
+                        Type your password 4 times below with your natural, unhurried cadence.
+                    </small>
+
+                </div>
+
+
+                <span class="badge @(passwordSamples.Count == 4 ? "bg-success" : "bg-teal")">
+
+                    Sample @(passwordSamples.Count) / 4
+
+                </span>
+
+            </div>
+
+
+            <!-- Password Input + Record Button -->
+            <div class="input-group mb-2">
+
+                <input id="pwd-enrollment-input"
+                       type="password"
+                       class="form-control form-control-vault"
+                       placeholder="@(passwordSamples.Count >= 4
+                                           ? "Password samples recorded."
+                                           : $"Type sample {passwordSamples.Count + 1} of 4...")"
+                       @bind="currentPwdInput"
+                       @bind:event="oninput"
+                       @onkeydown="@HandlePasswordKeyDown"
+                       disabled="@(string.IsNullOrWhiteSpace(regModel.Password)
+                                           || regModel.Password.Length < 6
+                                           || passwordSamples.Count >= 4
+                                           || isSubmitting)" />
+
+
+                <button type="button"
+                        class="btn btn-vault-secondary btn-sm"
+                        @onclick="RecordPasswordSample"
+                        disabled="@(passwordSamples.Count >= 4
+                                                || string.IsNullOrEmpty(currentPwdInput)
+                                                || isSubmitting)">
+
+                    Record Sample @(passwordSamples.Count + 1)
+
+                </button>
+
+            </div>
+
+
+            <!-- Password Waveform -->
+            <div class="waveform-box mb-2">
+
+                <svg id="pwd-enrollment-input-waveform"
+                     style="width: 100%; height: 100%;">
+                </svg>
+
+            </div>
+
+
+            <!-- Sample Counter -->
+            <div class="d-flex justify-content-between text-muted"
+                 style="font-size: 0.725rem;">
+
+                <span>
+                    Hold time (Teal) | Inter-key flight latency (Amber)
+                </span>
+
+                <span>
+                    @(4 - passwordSamples.Count) samples remaining
+                </span>
+
+            </div>
+
+        </div>
+
+
+        <hr class="my-4 border-color" />
+
+
+        <!-- COMPLETE REGISTRATION -->
+        <button type="button"
+                class="btn btn-vault w-100 py-2 mt-2"
+                @onclick="HandleRegistration"
+                disabled="@(passwordSamples.Count < 4 || isSubmitting)">
+
+            @if (isSubmitting)
+            {
+                <span class="spinner-border spinner-border-sm me-2"></span>
+
+                <span>
+                    Creating Secure Account...
+                </span>
+            }
+            else
+            {
+                <span>
+                    Complete Enrolled Registration
+                </span>
+            }
+
+        </button>
+
+
+        <!-- LOGIN LINK -->
+        <div class="text-center mt-4 pt-3 border-top border-color">
+
+            <small class="text-muted">
+                Already registered?
+            </small>
+
+            <br />
+
+            <a href="login"
+               class="small text-primary fw-semibold text-decoration-none">
+
+                ← Return to Login
+
+            </a>
+
+        </div>
+
+    </div>
+</div>
+
+
+@code {
+
+    private RegistrationModel regModel = new();
+
+    private string currentPwdInput = string.Empty;
+
+    private List<KeystrokeSample> passwordSamples = new();
+
+    private string errorMessage = string.Empty;
+
+    private string successMessage = string.Empty;
+
+    private bool isSubmitting = false;
+
+    private DotNetObjectReference<RegisterPage>? pwdDotNetRef;
+
+
+    /*
+     * Registration has only TWO steps now:
+     *
+     * Step 1 = Username + Password
+     * Step 2 = 4 Password Typing Samples
+     */
+    private int CurrentStep
+    {
+        get
+        {
+            if (passwordSamples.Count < 4)
+                return 1;
+
+            return 2;
+        }
+    }
+
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+            return;
+
+        try
+        {
+            pwdDotNetRef = DotNetObjectReference.Create(this);
+
+            await JS.InvokeVoidAsync(
+                "keystrokeCapture.attach",
+                "pwd-enrollment-input",
+                pwdDotNetRef);
+        }
+        catch
+        {
+            // Ignore JavaScript initialization errors.
+        }
+    }
+
+
+    [JSInvokable]
+    public void OnKeystrokeCaptured(KeystrokeSample sample)
+    {
+        // Keystroke capture is handled by keystrokeCapture.js.
+    }
+
+
+    private async Task HandlePasswordKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await RecordPasswordSample();
+        }
+    }
+
+
+    private async Task RecordPasswordSample()
+    {
+        errorMessage = string.Empty;
+
+
+        // Already have 4 samples
+        if (passwordSamples.Count >= 4)
+            return;
+
+
+        // Empty input
+        if (string.IsNullOrEmpty(currentPwdInput))
+            return;
+
+
+        // Password validation
+        if (string.IsNullOrWhiteSpace(regModel.Password)
+            || regModel.Password.Length < 6)
+        {
+            errorMessage =
+                "Please enter a valid master password (minimum 6 characters) first.";
+
+            return;
+        }
+
+
+        // Make sure typed sample matches password
+        if (currentPwdInput != regModel.Password)
+        {
+            errorMessage =
+                "Sample text did not match your master password. Please type accurately.";
+
+            currentPwdInput = string.Empty;
+
+            await JS.InvokeVoidAsync(
+                "keystrokeCapture.reset",
+                "pwd-enrollment-input");
+
+            return;
+        }
+
+
+        try
+        {
+            // Get timing information from JavaScript
+            var data =
+                await JS.InvokeAsync<KeystrokeSample>(
+                    "keystrokeCapture.getTimingData",
+                    "pwd-enrollment-input");
+
+
+            if (data == null
+                || data.HoldTimes == null
+                || data.HoldTimes.Count == 0)
+            {
+                errorMessage =
+                    "No keystroke timings captured. Please type your password again.";
+
+                return;
+            }
+
+
+            // Store the sample
+            passwordSamples.Add(data);
+
+
+            // Clear input
+            currentPwdInput = string.Empty;
+
+
+            // Reset JavaScript capture
+            await JS.InvokeVoidAsync(
+                "keystrokeCapture.reset",
+                "pwd-enrollment-input");
+
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            errorMessage =
+                $"Sample capture error: {ex.Message}";
+        }
+    }
+
+
+    private async Task HandleRegistration()
+    {
+        errorMessage = string.Empty;
+
+
+        // Validate username
+        if (string.IsNullOrWhiteSpace(regModel.Username)
+            || regModel.Username.Length < 3)
+        {
+            errorMessage =
+                "Username must be at least 3 characters long.";
+
+            return;
+        }
+
+
+        // Validate recovery email
+        if (string.IsNullOrWhiteSpace(regModel.Email) ||
+            !regModel.Email.Contains("@", StringComparison.Ordinal))
+        {
+            errorMessage = "Please enter a valid recovery email address.";
+            return;
+        }
+
+
+        // Validate password
+        if (string.IsNullOrWhiteSpace(regModel.Password)
+            || regModel.Password.Length < 6)
+        {
+            errorMessage =
+                "Password must be at least 6 characters long.";
+
+            return;
+        }
+
+
+        // Validate biometric samples
+        if (passwordSamples.Count < 4)
+        {
+            errorMessage =
+                "Please complete all 4 password typing samples.";
+
+            return;
+        }
+
+
+        isSubmitting = true;
+
+
+        try
+        {
+            /*
+             * IMPORTANT:
+             *
+             * Registration now sends only:
+             *
+             * Username
+             * Password
+             * 4 password typing samples
+             *
+             * There is NO Action Phrase here.
+             */
+
+            var result =
+                await AuthService.RegisterAsync(
+                    regModel.Username,
+                    regModel.Email,
+                    regModel.Password,
+                    passwordSamples);
+
+
+            if (result.IsSuccess)
+            {
+                successMessage = result.Message;
+
+                StateHasChanged();
+
+                await Task.Delay(1200);
+
+                Navigation.NavigateTo("/login");
+            }
+            else
+            {
+                errorMessage = result.Message;
+
+                // Allow user to enroll again
+                passwordSamples.Clear();
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage =
+                $"Registration error: {ex.Message}";
+        }
+        finally
+        {
+            isSubmitting = false;
+
+            StateHasChanged();
+        }
+    }
+
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync(
+                "keystrokeCapture.detach",
+                "pwd-enrollment-input");
+        }
+        catch
+        {
+        }
+
+        pwdDotNetRef?.Dispose();
+    }
+
+
+    public class RegistrationModel
+    {
+        public string Username { get; set; } = string.Empty;
+
+        public string Email { get; set; } = string.Empty;
+
+        public string Password { get; set; } = string.Empty;
+    }
+}

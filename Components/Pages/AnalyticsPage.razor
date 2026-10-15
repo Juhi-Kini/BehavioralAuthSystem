@@ -1,0 +1,199 @@
+@page "/analytics"
+@page "/audit-analytics"
+@attribute [Authorize]
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IAuthService AuthService
+@inject IJSRuntime JS
+
+<PageTitle>Audit & Analytics - BehavioralAuthSystem</PageTitle>
+
+<div class="container-fluid p-0">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3 mb-4">
+        <div><h2 class="m-0 text-primary">Audit & Biometric Analytics</h2><p class="text-muted small m-0">Authentication performance, behavioral verification and security audit history.</p></div>
+        <div class="d-flex gap-2 flex-wrap">
+            <select class="form-select form-select-sm form-control-vault" style="width:auto" @bind="selectedActionFilter" @bind:after="OnFilterChanged">
+                <option value="">All Actions</option><option value="login">Login</option><option value="action_verify">Action Verification</option><option value="continuous">Continuous</option>
+            </select>
+            <button class="btn btn-vault-secondary btn-sm" @onclick="ExportCsv">CSV</button>
+            <button class="btn btn-vault btn-sm" @onclick="ExportPdf">PDF</button>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <Metric Title="Attempts" Value="@FilteredLogs.Count.ToString()" Detail="Recorded audit events" />
+        <Metric Title="Authentication Accuracy"
+                Value="@AccuracyText"
+                Detail="Successful attempts / total" />
+
+        <Metric Title="Avg Confidence"
+                Value="@AvgConfidenceText"
+                Detail="Behavioral confidence" />        <Metric Title="FAR" Value="@FarText" Detail="Requires labeled impostor attempts" />
+        <Metric Title="FRR" Value="@FrrText" Detail="Requires labeled genuine attempts" />
+        <Metric Title="EER" Value="@EerText" Detail="Requires threshold sweep data" />
+        <Metric Title="Anomalies" Value="@FilteredLogs.Count(x => x.IsSuspicious).ToString()" Detail="Historical anomaly flags" />
+    </div>
+
+    <div class="vault-card mb-4">
+        <div class="d-flex justify-content-between align-items-center mb-3"><h5 class="text-primary m-0">Confidence & Adaptive Threshold</h5><span class="badge bg-secondary-subtle text-secondary border">Last 50</span></div>
+        @if (FilteredLogs.Count == 0) { <div class="py-5 text-center text-muted">No audit records yet.</div> }
+        else { <div style="height:320px"><canvas id="scoreHistoryChart"></canvas></div> }
+    </div>
+
+    <div class="vault-card">
+        <div class="d-flex justify-content-between align-items-center mb-3"><h5 class="text-primary m-0">Security Audit Trail</h5><span class="text-muted small">Page @CurrentPage of @TotalPages</span></div>
+        <div class="table-responsive"><table class="table table-hover align-middle mb-0 small"><thead><tr><th>UTC Time</th><th>Action</th><th>Status</th><th>Confidence</th><th>Z</th><th>Threshold</th><th>Anomaly</th><th>Reason</th></tr></thead>
+        <tbody>@foreach (var log in PagedLogs)
+        { <tr><td>@log.AttemptTime.ToString("yyyy-MM-dd HH:mm:ss")</td><td><span class="badge bg-secondary-subtle text-secondary border">@log.ActionType</span></td><td>@(log.IsSuccessful ? "Passed" : "Failed")</td><td>@log.Score.ToString("F1")%</td><td>@log.ZScore.ToString("F2")</td><td>@log.AdaptiveThreshold.ToString("F2")</td><td>@(log.IsSuspicious ? "⚠️" : "—")</td><td class="text-muted">@log.FailureReason</td></tr> }</tbody></table></div>
+        <div class="d-flex justify-content-end gap-2 mt-3"><button class="btn btn-vault-secondary btn-sm" disabled="@(CurrentPage <= 1)" @onclick="PrevPage">Previous</button><button class="btn btn-vault-secondary btn-sm" disabled="@(CurrentPage >= TotalPages)" @onclick="NextPage">Next</button></div>
+    </div>
+
+    <div class="row g-3 mt-1"><div class="col-md-6"><div class="vault-card h-100"><h5 class="text-teal">FAR / FRR / EER note</h5><p class="small text-muted mb-0">False-accept and false-reject rates require labeled genuine and impostor samples. The application does not invent these labels, so the dashboard reports them as N/A until a controlled evaluation dataset is available.</p></div></div><div class="col-md-6"><div class="vault-card h-100"><h5 class="text-amber">Security model</h5><p class="small text-muted mb-0">Files use AES-256-GCM with HKDF-SHA256 derived per-user keys. Behavioral action verification is separate from encryption and is recorded in the audit trail.</p></div></div></div>
+</div>
+
+@code {
+    private User? currentUser;
+    private List<AuthLog> logs = new();
+    private string selectedActionFilter = "";
+    private int CurrentPage = 1;
+    private const int PageSize = 15;
+    private string AccuracyText => $"{Accuracy:F1}%";
+    private string AvgConfidenceText => $"{AvgConfidence:F1}%";
+    private List<AuthLog> FilteredLogs => string.IsNullOrWhiteSpace(selectedActionFilter) ? logs : logs.Where(x => x.ActionType.Equals(selectedActionFilter, StringComparison.OrdinalIgnoreCase)).ToList();
+    private List<AuthLog> PagedLogs => FilteredLogs.OrderByDescending(x => x.AttemptTime).Skip((CurrentPage - 1) * PageSize).Take(PageSize).ToList();
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(FilteredLogs.Count / (double)PageSize));
+    private double Accuracy => FilteredLogs.Count == 0 ? 0 : FilteredLogs.Count(x => x.IsSuccessful) * 100.0 / FilteredLogs.Count;
+    private double AvgConfidence => FilteredLogs.Count == 0 ? 0 : FilteredLogs.Average(x => x.Score);
+    private double AvgZ => FilteredLogs.Count == 0 ? 0 : FilteredLogs.Average(x => x.ZScore);
+    private List<AuthLog> EvaluationLogs =>
+    FilteredLogs
+        .Where(x =>
+            x.ActionType.Equals(
+                "login",
+                StringComparison.OrdinalIgnoreCase)
+            && (x.EvaluationLabel == "Genuine"
+                || x.EvaluationLabel == "Impostor"))
+        .ToList();
+
+    private string FarText
+    {
+        get
+        {
+            var impostorLogs = EvaluationLogs
+                .Where(x => x.EvaluationLabel == "Impostor")
+                .ToList();
+
+            if (impostorLogs.Count == 0)
+                return "N/A";
+
+            double far = impostorLogs.Count(x => x.IsSuccessful)
+                         * 100.0 / impostorLogs.Count;
+
+            return $"{far:F1}%";
+        }
+    }
+
+    private string FrrText
+    {
+        get
+        {
+            var genuineLogs = EvaluationLogs
+                .Where(x => x.EvaluationLabel == "Genuine")
+                .ToList();
+
+            if (genuineLogs.Count == 0)
+                return "N/A";
+
+            double frr = genuineLogs.Count(x => !x.IsSuccessful)
+                         * 100.0 / genuineLogs.Count;
+
+            return $"{frr:F1}%";
+        }
+    }
+
+    private string EerText
+    {
+        get
+        {
+            var genuine = EvaluationLogs
+                .Where(x => x.EvaluationLabel == "Genuine")
+                .ToList();
+
+            var impostors = EvaluationLogs
+                .Where(x => x.EvaluationLabel == "Impostor")
+                .ToList();
+
+            if (genuine.Count == 0 || impostors.Count == 0)
+                return "N/A";
+
+            double bestDifference = double.MaxValue;
+            double eer = 0;
+
+            for (double threshold = 0; threshold <= 100; threshold += 0.5)
+            {
+                double far = impostors.Count(x => x.Score >= threshold)
+                             * 100.0 / impostors.Count;
+
+                double frr = genuine.Count(x => x.Score < threshold)
+                             * 100.0 / genuine.Count;
+
+                double difference = Math.Abs(far - frr);
+
+                if (difference < bestDifference)
+                {
+                    bestDifference = difference;
+                    eer = (far + frr) / 2.0;
+                }
+            }
+
+            return $"{eer:F1}%";
+        }
+    }
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (state.User.Identity?.IsAuthenticated == true)
+        {
+            currentUser = await AuthService.GetUserByUsernameAsync(state.User.Identity.Name!);
+            if (currentUser != null) logs = await AuthService.GetUserAuthLogsAsync(currentUser.Id);
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender) { await RenderChartAsync(); }
+    private async Task OnFilterChanged() { CurrentPage = 1; await RenderChartAsync(); }
+    private void PrevPage() { if (CurrentPage > 1) CurrentPage--; }
+    private void NextPage() { if (CurrentPage < TotalPages) CurrentPage++; }
+
+    private async Task RenderChartAsync()
+    {
+        if (FilteredLogs.Count == 0) return;
+        try
+        {
+            var items = FilteredLogs.OrderByDescending(x => x.AttemptTime).Take(50).OrderBy(x => x.AttemptTime).ToList();
+            await JS.InvokeVoidAsync("chartInterop.renderScoreHistoryChart", "scoreHistoryChart", items.Select(x => x.AttemptTime.ToString("MM/dd HH:mm")).ToArray(), items.Select(x => x.Score).ToArray(), items.Select(x => x.AdaptiveThreshold).ToArray());
+        }
+        catch { }
+    }
+
+    private async Task ExportCsv()
+    {
+        var rows = new List<string> { "TimestampUtc,Action,Success,Confidence,ZDistance,Threshold,Anomaly,FailureReason" };
+        rows.AddRange(FilteredLogs.Select(x => string.Join(",", new[] { x.AttemptTime.ToString("O"), Csv(x.ActionType), x.IsSuccessful.ToString(), x.Score.ToString("F2"), x.ZScore.ToString("F2"), x.AdaptiveThreshold.ToString("F2"), x.IsSuspicious.ToString(), Csv(x.FailureReason) })));
+        var base64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(string.Join("\r\n", rows)));
+        await JS.InvokeVoidAsync("fileDownloadInterop.downloadFileFromBytes", "audit-report.csv", "text/csv", base64);
+    }
+
+    private async Task ExportPdf()
+    {
+        using var ms = new MemoryStream();
+        var doc = QuestPDF.Fluent.Document.Create(container => container.Page(page => { page.Margin(30); page.Header().Text("BehavioralAuth Audit Report").FontSize(18).SemiBold(); page.Content().Column(col => { col.Spacing(6); col.Item().Text($"Generated: {DateTime.UtcNow:O}"); col.Item().Text($"Attempts: {FilteredLogs.Count} | Accuracy: {Accuracy:F1}% | Avg confidence: {AvgConfidence:F1}%"); foreach (var x in FilteredLogs.Take(100)) col.Item().Text($"{x.AttemptTime:O} | {x.ActionType} | {(x.IsSuccessful ? "PASS" : "FAIL")} | {x.Score:F1}% | Z {x.ZScore:F2}"); }); page.Footer().AlignCenter().Text("BehavioralAuthSystem"); }));
+        doc.GeneratePdf(ms);
+        await JS.InvokeVoidAsync("fileDownloadInterop.downloadFileFromBytes", "audit-report.pdf", "application/pdf", Convert.ToBase64String(ms.ToArray()));
+    }
+
+    private static string Csv(string value) => "\"" + (value ?? "").Replace("\"", "\"\"") + "\"";
+}
+
+@code {
+    // Small reusable metric component rendered through a local child component is not available in this file;
+    // the markup below is supplied by the component defined in Components/Shared/Metric.razor.
+}

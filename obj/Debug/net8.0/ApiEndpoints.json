@@ -1,0 +1,48 @@
+[
+  {
+    "ContainingType": "BehavioralAuthSystem.Controllers.AuthController",
+    "Method": "GetCurrentUser",
+    "RelativePath": "api/auth/current-user",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "BehavioralAuthSystem.Controllers.AuthController",
+    "Method": "Login",
+    "RelativePath": "api/auth/login",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [
+      {
+        "Name": "request",
+        "Type": "BehavioralAuthSystem.Controllers.AuthController\u002BLoginRequest",
+        "IsRequired": true
+      }
+    ],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "BehavioralAuthSystem.Controllers.AuthController",
+    "Method": "SignOutCookie",
+    "RelativePath": "api/auth/sign-out",
+    "HttpMethod": "POST",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  },
+  {
+    "ContainingType": "BehavioralAuthSystem.Controllers.AuthController",
+    "Method": "SignOutCookieGet",
+    "RelativePath": "api/auth/sign-out",
+    "HttpMethod": "GET",
+    "IsController": true,
+    "Order": 0,
+    "Parameters": [],
+    "ReturnTypes": []
+  }
+]

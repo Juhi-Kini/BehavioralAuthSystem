@@ -1,0 +1,205 @@
+@page "/trash"
+@attribute [Authorize]
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IAuthService AuthService
+@inject IFileStorageService FileStorageService
+
+<PageTitle>Trash Bin - BehavioralAuthSystem</PageTitle>
+
+<div class="container-fluid p-0">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="m-0 text-primary">Trash Bin</h2>
+            <p class="text-muted small m-0">Soft-deleted files can be restored or permanently purged with action verification</p>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(statusMessage))
+    {
+        <div class="alert alert-info py-2 px-3 small mb-3 d-flex justify-content-between align-items-center">
+            <span>@statusMessage</span>
+            <button type="button" class="btn-close small" @onclick="() => statusMessage = string.Empty"></button>
+        </div>
+    }
+
+    <div class="vault-card">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0" style="font-size: 0.875rem;">
+                <thead>
+                    <tr class="table-light">
+                        <th>Filename</th>
+                        <th>Size</th>
+                        <th>Deleted Date (UTC)</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (deletedFiles.Count == 0)
+                    {
+                        <tr>
+                            <td colspan="4" class="text-center text-muted py-5">
+                                <div class="mb-2">
+                                    <svg width="32" height="32" fill="none" stroke="currentColor" viewBox="0 0 24 24" class="text-muted">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                                    </svg>
+                                </div>
+                                <div>The trash bin is currently empty.</div>
+                            </td>
+                        </tr>
+                    }
+                    else
+                    {
+                        @foreach (var file in deletedFiles)
+                        {
+                            <tr @key="file.Id">
+                                <td>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="text-muted">
+                                            <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path>
+                                            </svg>
+                                        </span>
+                                        <span class="text-muted">@file.FileName</span>
+                                    </div>
+                                </td>
+                                <td>@FormatFileSize(file.SizeBytes)</td>
+                                <td>@(file.DeletedAt?.ToString("yyyy-MM-dd HH:mm") ?? "-")</td>
+                                <td class="text-end">
+                                    <button class="btn btn-vault-secondary btn-sm me-1"
+                                            @onclick="() => TriggerRestore(file)"
+                                            disabled="@showActionModal">
+                                        ↩️ Restore
+                                    </button>
+                                    <button class="btn btn-outline-danger btn-sm"
+                                            @onclick="() => TriggerPermanentDelete(file)"
+                                            disabled="@showActionModal">
+                                        Purge File
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<ActionVerificationModal @bind-IsOpen="showActionModal"
+                         CurrentUser="currentUser"
+                         ActionType="@verificationActionType"
+                         OperationContext="@actionContextDescription"
+                         OnVerificationPassed="ExecuteVerifiedAction" />
+
+@code {
+    private User? currentUser;
+    private List<FileRecord> deletedFiles = new();
+    private string statusMessage = string.Empty;
+
+    private bool showActionModal;
+    private FileRecord? targetFile;
+    private string verificationActionType = "Restore";
+    private PendingTrashAction pendingAction = PendingTrashAction.None;
+
+    private enum PendingTrashAction
+    {
+        None,
+        Restore,
+        Purge
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthStateProvider.GetAuthenticationStateAsync();
+
+        if (state.User.Identity?.IsAuthenticated == true &&
+            !string.IsNullOrWhiteSpace(state.User.Identity.Name))
+        {
+            currentUser = await AuthService.GetUserByUsernameAsync(state.User.Identity.Name!);
+
+            if (currentUser != null)
+                await RefreshList();
+        }
+    }
+
+    private async Task RefreshList()
+    {
+        if (currentUser == null)
+            return;
+
+        var all = await FileStorageService.GetUserFilesAsync(currentUser.Id, includeDeleted: true);
+        deletedFiles = all.Where(f => f.IsDeleted).ToList();
+    }
+
+    private void TriggerRestore(FileRecord file)
+    {
+        if (currentUser == null || showActionModal)
+            return;
+
+        targetFile = file;
+        pendingAction = PendingTrashAction.Restore;
+        verificationActionType = "Restore";
+        actionContextDescription = $"Restore '{file.FileName}' from Trash";
+        showActionModal = true;
+    }
+
+    private void TriggerPermanentDelete(FileRecord file)
+    {
+        if (currentUser == null || showActionModal)
+            return;
+
+        targetFile = file;
+        pendingAction = PendingTrashAction.Purge;
+        verificationActionType = "Purge";
+        actionContextDescription = $"Permanently purge '{file.FileName}' and its encrypted file";
+        showActionModal = true;
+    }
+
+    private string actionContextDescription = string.Empty;
+
+    private async Task ExecuteVerifiedAction()
+    {
+        if (currentUser == null || targetFile == null)
+            return;
+
+        // Consume the pending operation before executing it to avoid duplicate callbacks.
+        var action = pendingAction;
+        var file = targetFile;
+        pendingAction = PendingTrashAction.None;
+        targetFile = null;
+
+        try
+        {
+            switch (action)
+            {
+                case PendingTrashAction.Restore:
+                    await FileStorageService.RestoreFileAsync(file.Id, currentUser.Id);
+                    statusMessage = $"Restored file '{file.FileName}' back to your file vault.";
+                    await RefreshList();
+                    break;
+
+                case PendingTrashAction.Purge:
+                    await FileStorageService.PermanentDeleteFileAsync(file.Id, currentUser.Id);
+                    statusMessage = $"Permanently purged '{file.FileName}' and its physical encrypted file from disk.";
+                    await RefreshList();
+                    break;
+
+                default:
+                    statusMessage = "No pending verified operation was found.";
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"The verified operation failed: {ex.Message}";
+        }
+    }
+
+    private static string FormatFileSize(long bytes)
+    {
+        if (bytes >= 1024 * 1024)
+            return $"{(bytes / (1024.0 * 1024.0)):F2} MB";
+
+        return $"{(bytes / 1024.0):F1} KB";
+    }
+}

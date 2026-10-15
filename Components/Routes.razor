@@ -1,0 +1,28 @@
+<Router AppAssembly="@typeof(Program).Assembly">
+    <Found Context="routeData">
+        <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(Layout.MainLayout)">
+            <NotAuthorized>
+                <div class="container mt-5 text-center">
+                    <div class="vault-card p-5 mx-auto" style="max-width: 500px;">
+                        <h3 class="text-danger mb-3">Access Restricted</h3>
+                        <p class="text-muted">You must be logged in to view this page.</p>
+                        <a href="login" class="btn btn-vault">Proceed to Login</a>
+                    </div>
+                </div>
+            </NotAuthorized>
+        </AuthorizeRouteView>
+        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+    </Found>
+    <NotFound>
+        <PageTitle>Not found</PageTitle>
+        <LayoutView Layout="@typeof(Layout.MainLayout)">
+            <div class="container mt-5 text-center">
+                <div class="vault-card p-5 mx-auto" style="max-width: 500px;">
+                    <h3>Page Not Found</h3>
+                    <p class="text-muted">The requested page does not exist in BehavioralAuthSystem.</p>
+                    <a href="" class="btn btn-vault">Back to Dashboard</a>
+                </div>
+            </div>
+        </LayoutView>
+    </NotFound>
+</Router>

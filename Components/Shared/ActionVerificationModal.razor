@@ -1,0 +1,270 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject IBehavioralPatternService BehavioralPatternService
+
+@if (IsOpen)
+{
+    <div class="modal-vault-backdrop" @onclick="HandleBackdropClick">
+        <div class="modal-vault-content behavioral-verification-modal" @onclick:stopPropagation="true">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="m-0 text-primary d-flex align-items-center gap-2">🔐 <span>Behavioral Verification</span></h5>
+                <button type="button" class="btn-close" @onclick="CloseModal" disabled="@(isVerifying || completionInProgress)"></button>
+            </div>
+            <div class="alert alert-info py-2 small">
+                <strong>@OperationContext</strong><br />
+                This action requires behavioral verification before it can continue.
+            </div>
+            <div class="verification-instruction text-center mb-3">
+                <div class="fs-4 mb-1">🛡️</div>
+                <div class="fw-semibold">Perform your registered behavioral pattern.</div>
+                <small class="text-muted">Verification starts automatically. No recording controls are required.</small>
+            </div>
+            @if (!string.IsNullOrWhiteSpace(errorMessage))
+            {
+                <div class="alert alert-danger py-2 small">@errorMessage</div>
+            }
+            <div id="behavioral-verification-area" class="behavioral-verification-area @(isCapturing ? "capturing" : "")">
+                @if (isVerifying)
+                {
+                    <div class="verification-status"><div class="verification-spinner">⏳</div><strong>Checking your behavioral pattern...</strong></div>
+                }
+                else if (isCapturing)
+                {
+                    <div class="verification-status"><div class="verification-icon">👀</div><strong>Perform your usual interaction</strong><small>The system will detect it automatically.</small></div>
+                }
+                else
+                {
+                    <div class="verification-status"><div class="verification-icon">🔐</div><strong>Verification ready</strong></div>
+                }
+            </div>
+            <div class="d-flex justify-content-end mt-3">
+                <button class="btn btn-vault-secondary" @onclick="CloseModal" disabled="@(isVerifying || completionInProgress)">Cancel</button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .behavioral-verification-modal { max-width: 560px; }
+    .behavioral-verification-area {
+        min-height: 210px; border: 2px dashed #cbd5e1; border-radius: 16px;
+        display: flex; align-items: center; justify-content: center; text-align: center;
+        color: #64748b; background: rgba(13,148,136,.04); user-select: none; touch-action: none;
+    }
+    .behavioral-verification-area.capturing { border-color: #0d9488; background: rgba(13,148,136,.08); color: #0d9488; }
+    .verification-status { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+    .verification-icon, .verification-spinner { font-size: 38px; }
+    .verification-status small { color: #64748b; }
+</style>
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+    [Parameter] public User? CurrentUser { get; set; }
+    [Parameter] public string ActionType { get; set; } = "Upload";
+    [Parameter] public string OperationContext { get; set; } = "Protected file operation";
+    [Parameter] public EventCallback OnVerificationPassed { get; set; }
+
+    private string patternType = string.Empty;
+    private string? errorMessage;
+    private bool isCapturing;
+    private bool isVerifying;
+    private bool sessionRunning;
+    private bool completionInProgress;
+    private bool disposed;
+    private int sessionId;
+    private int? loadedUserId;
+    private string? loadedActionType;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!IsOpen)
+        {
+            if (sessionRunning || isCapturing || isVerifying)
+                await CancelCaptureAsync();
+
+            loadedUserId = null;
+            loadedActionType = null;
+            return;
+        }
+
+        if (CurrentUser == null)
+        {
+            errorMessage = "Your user session could not be loaded. Please sign in again.";
+            return;
+        }
+
+        if (sessionRunning &&
+            loadedUserId == CurrentUser.Id &&
+            string.Equals(loadedActionType, ActionType, StringComparison.Ordinal))
+            return;
+
+        await CancelCaptureAsync();
+
+        loadedUserId = CurrentUser.Id;
+        loadedActionType = ActionType;
+        int thisSession = sessionId;
+        errorMessage = null;
+        patternType = string.Empty;
+        completionInProgress = false;
+
+        var pattern = await BehavioralPatternService.GetPatternAsync(CurrentUser.Id, ActionType);
+        if (!IsCurrentSession(thisSession))
+            return;
+
+        if (pattern == null)
+        {
+            errorMessage = $"No behavioral pattern is enrolled for '{ActionType}'. Please configure it from Behavioral Actions.";
+            isCapturing = false;
+            isVerifying = false;
+            return;
+        }
+
+        patternType = pattern.PatternType ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(patternType))
+        {
+            errorMessage = "The enrolled pattern is invalid. Please enroll it again.";
+            return;
+        }
+
+        sessionRunning = true;
+        _ = RunVerificationLoopAsync(thisSession, CurrentUser.Id, ActionType, patternType);
+    }
+
+    private async Task RunVerificationLoopAsync(int thisSession, int userId, string actionType, string selectedPatternType)
+    {
+        try
+        {
+            while (IsCurrentSession(thisSession))
+            {
+                errorMessage = null;
+                isVerifying = false;
+                isCapturing = true;
+                await InvokeAsync(StateHasChanged);
+
+                BehavioralCapture? capture;
+                try
+                {
+                    capture = await JS.InvokeAsync<BehavioralCapture?>(
+                        "behavioralCapture.captureAutomatically",
+                        "behavioral-verification-area",
+                        selectedPatternType);
+                }
+                catch (JSException)
+                {
+                    if (!IsCurrentSession(thisSession)) return;
+                    errorMessage = "Behavioral capture could not start. Check that the capture script is loaded, then try again.";
+                    isCapturing = false;
+                    sessionRunning = false;
+                    await InvokeAsync(StateHasChanged);
+                    return;
+                }
+
+                if (!IsCurrentSession(thisSession)) return;
+                if (capture == null)
+                {
+                    isCapturing = false;
+                    sessionRunning = false;
+                    await InvokeAsync(StateHasChanged);
+                    return;
+                }
+
+                isCapturing = false;
+                isVerifying = true;
+                await InvokeAsync(StateHasChanged);
+
+                var result = await BehavioralPatternService.VerifyAsync(userId, actionType, capture);
+                if (!IsCurrentSession(thisSession)) return;
+
+                isVerifying = false;
+                if (result.Passed)
+                {
+                    completionInProgress = true;
+                    sessionRunning = false;
+                    await InvokeAsync(StateHasChanged);
+                    await Task.Delay(250);
+
+                    if (!IsCurrentSession(thisSession) || disposed) return;
+
+                    await StopAutomaticCaptureAsync();
+                    isCapturing = false;
+                    isVerifying = false;
+                    await IsOpenChanged.InvokeAsync(false);
+                    await OnVerificationPassed.InvokeAsync();
+                    return;
+                }
+
+                errorMessage = "Pattern not recognized. Please try again.";
+                await InvokeAsync(StateHasChanged);
+                await Task.Delay(650);
+                if (!IsCurrentSession(thisSession)) return;
+            }
+        }
+        catch (Exception)
+        {
+            if (IsCurrentSession(thisSession))
+            {
+                errorMessage = "Verification could not be completed. Please close the dialog and try again.";
+                isCapturing = false;
+                isVerifying = false;
+                sessionRunning = false;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        finally
+        {
+            if (IsCurrentSession(thisSession) && !completionInProgress)
+            {
+                isCapturing = false;
+                isVerifying = false;
+                sessionRunning = false;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    private bool IsCurrentSession(int candidateSessionId) =>
+        !disposed && IsOpen && sessionId == candidateSessionId;
+
+    private async Task CloseModal()
+    {
+        if (isVerifying || completionInProgress) return;
+        await CancelCaptureAsync();
+        errorMessage = null;
+        await IsOpenChanged.InvokeAsync(false);
+    }
+
+    private async Task HandleBackdropClick()
+    {
+        if (!isVerifying && !completionInProgress)
+            await CloseModal();
+    }
+
+    private async Task CancelCaptureAsync()
+    {
+        sessionId++;
+        sessionRunning = false;
+        completionInProgress = false;
+        isCapturing = false;
+        isVerifying = false;
+        await StopAutomaticCaptureAsync();
+    }
+
+    private async Task StopAutomaticCaptureAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("behavioralCapture.stopAutomatic");
+        }
+        catch (JSException) { }
+        catch (ObjectDisposedException) { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        disposed = true;
+        sessionId++;
+        sessionRunning = false;
+        await StopAutomaticCaptureAsync();
+    }
+}

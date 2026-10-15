@@ -1,0 +1,12 @@
+<div class="col-md-3 col-6">
+    <div class="vault-card p-3 h-100">
+        <span class="text-muted small fw-semibold">@Title</span>
+        <h3 class="m-0 my-1 text-primary">@Value</h3>
+        <span class="text-muted small">@Detail</span>
+    </div>
+</div>
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public string Detail { get; set; } = "";
+}

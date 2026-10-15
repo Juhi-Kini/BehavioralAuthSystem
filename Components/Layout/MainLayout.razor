@@ -1,0 +1,1001 @@
+@inherits LayoutComponentBase
+@implements IAsyncDisposable
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IEncryptionService EncryptionService
+@inject IAuthService AuthService
+@inject IContinuousReauthService ContinuousReauthService
+@inject IKeystrokeService KeystrokeService
+@inject IJSRuntime JS
+
+<div class="vault-app-container">
+
+    <!-- =========================================================
+         MOBILE TOP HEADER
+         Fixed at the top on mobile
+         ========================================================= -->
+    <header class="mobile-top-header d-md-none d-flex align-items-center justify-content-between p-3 bg-sidebar border-bottom border-secondary border-opacity-25 text-white">
+
+        <div class="d-flex align-items-center gap-2">
+
+            <button class="btn btn-outline-light btn-sm p-1"
+                    @onclick="ToggleMobileMenu"
+                    aria-label="Toggle Navigation">
+
+                <svg width="22"
+                     height="22"
+                     fill="none"
+                     stroke="currentColor"
+                     viewBox="0 0 24 24">
+
+                    <path stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M4 6h16M4 12h16M4 18h16">
+                    </path>
+
+                </svg>
+
+            </button>
+
+            <div class="d-flex align-items-center gap-2">
+
+                <div class="p-1 rounded bg-teal-subtle text-teal">
+
+                    <svg width="18"
+                         height="18"
+                         fill="none"
+                         stroke="currentColor"
+                         viewBox="0 0 24 24">
+
+                        <path stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="2"
+                              d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z">
+                        </path>
+
+                    </svg>
+
+                </div>
+
+                <span class="fw-bold fs-6 brand-title">
+                    BehavioralAuth
+                </span>
+
+            </div>
+
+        </div>
+
+        <div class="d-flex align-items-center gap-2">
+            <DarkModeToggle />
+        </div>
+
+    </header>
+
+
+    <!-- =========================================================
+         MAIN APPLICATION LAYOUT
+         ========================================================= -->
+    <div class="vault-layout-shell">
+
+        <!-- =====================================================
+             SIDEBAR
+             Fixed on desktop
+             ===================================================== -->
+        <aside class="sidebar-vault @(isMobileMenuOpen ? "mobile-open" : "") d-flex flex-column p-3 text-white">
+
+            <!-- BRAND -->
+            <div class="d-flex align-items-center justify-content-between mb-4 px-2">
+
+                <div class="d-flex align-items-center gap-2">
+
+                    <div class="p-2 rounded bg-teal text-white">
+
+                        <svg width="22"
+                             height="22"
+                             fill="none"
+                             stroke="currentColor"
+                             viewBox="0 0 24 24">
+
+                            <path stroke-linecap="round"
+                                  stroke-linejoin="round"
+                                  stroke-width="2"
+                                  d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z">
+                            </path>
+
+                        </svg>
+
+                    </div>
+
+                    <div>
+
+                        <div class="brand-title fs-5 lh-1 text-white">
+                            BehavioralAuth
+                        </div>
+
+                        <small class="text-teal"
+                               style="font-size: 0.72rem; letter-spacing: 0.5px;">
+                            AES-256-GCM + Dynamics
+                        </small>
+
+                    </div>
+
+                </div>
+
+                <button class="btn btn-close btn-close-white d-md-none"
+                        @onclick="ToggleMobileMenu">
+                </button>
+
+            </div>
+
+
+            <!-- NAVIGATION -->
+            <nav class="mb-auto">
+                <NavMenu />
+            </nav>
+
+
+            <!-- SECURITY INDICATORS -->
+            <hr class="border-secondary border-opacity-25 my-3" />
+
+            <div class="p-2 rounded bg-dark bg-opacity-50 small text-white-50 border border-secondary border-opacity-25">
+
+                <div class="fw-semibold text-light mb-1 d-flex align-items-center gap-1">
+
+                    <svg width="14"
+                         height="14"
+                         fill="none"
+                         stroke="currentColor"
+                         viewBox="0 0 24 24">
+
+                        <path stroke-linecap="round"
+                              stroke-linejoin="round"
+                              stroke-width="2"
+                              d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z">
+                        </path>
+
+                    </svg>
+
+                    <span>
+                        Security Engine
+                    </span>
+
+                </div>
+
+
+                <div class="d-flex flex-wrap gap-1 mb-1">
+
+                    <span class="badge bg-secondary-subtle text-light border border-secondary"
+                          style="font-size: 0.65rem;">
+                        AES-256-GCM
+                    </span>
+
+                    <span class="badge bg-secondary-subtle text-light border border-secondary"
+                          style="font-size: 0.65rem;">
+                        HKDF-SHA256
+                    </span>
+
+                </div>
+
+
+                <div class="d-flex align-items-center justify-content-between text-muted"
+                     style="font-size: 0.7rem;">
+
+                    <span>
+                        Master Secret:
+                    </span>
+
+                    <span class="text-success fw-bold">
+                        Active (In-Memory)
+                    </span>
+
+                </div>
+
+            </div>
+
+        </aside>
+
+
+        <!-- MOBILE SIDEBAR BACKDROP -->
+        @if (isMobileMenuOpen)
+        {
+            <div class="sidebar-backdrop d-md-none"
+                 @onclick="ToggleMobileMenu">
+            </div>
+        }
+
+
+        <!-- =====================================================
+             MAIN COLUMN
+             Header stays fixed
+             Body alone scrolls
+             ===================================================== -->
+        <div class="main-column">
+
+            <!-- =================================================
+                 DESKTOP TOP HEADER
+                 Fixed / non-scrolling
+                 ================================================= -->
+            <header class="desktop-top-header d-none d-md-flex bg-card border-bottom border-color px-4 py-3 align-items-center justify-content-between">
+
+                <div class="d-flex align-items-center gap-3">
+
+                    <TrustIndicator TrustLevel="@currentTrustLevel" />
+
+                    <span class="badge bg-body-tertiary text-muted border border-color small"
+                          style="font-size: 0.75rem;">
+
+                        Key Source:
+                        @masterSecretStatus
+
+                    </span>
+
+                </div>
+
+
+                <div class="d-flex align-items-center gap-3">
+
+                    <DarkModeToggle />
+
+                    <AuthorizeView>
+
+                        <Authorized>
+
+                            <div class="d-flex align-items-center gap-2">
+
+                                <div class="px-2 py-1 rounded bg-body-tertiary border border-color small fw-semibold">
+
+                                    👤 @context.User.Identity?.Name
+
+                                </div>
+
+                                <button type="button"
+                                        class="btn btn-vault-secondary btn-sm"
+                                        @onclick="HandleLogout">
+
+                                    Sign Out
+
+                                </button>
+
+                            </div>
+
+                        </Authorized>
+
+
+                        <NotAuthorized>
+
+                            <a href="login"
+                               class="btn btn-vault-secondary btn-sm">
+                                Login
+                            </a>
+
+                            <a href="register"
+                               class="btn btn-vault btn-sm">
+                                Register
+                            </a>
+
+                        </NotAuthorized>
+
+                    </AuthorizeView>
+
+                </div>
+
+            </header>
+
+
+            <!-- =================================================
+                 ONLY THIS AREA SCROLLS
+                 ================================================= -->
+            <main class="main-scroll-area">
+
+                <div class="page-content p-3 p-md-4">
+
+                    @Body
+
+                </div>
+
+            </main>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- =============================================================
+     CONTINUOUS RE-AUTHENTICATION MODAL
+     ============================================================= -->
+@if (showReauthPrompt)
+{
+    <div class="modal-vault-backdrop"
+         tabindex="-1">
+
+        <div class="modal-vault-content animate__animated animate__fadeInDown">
+
+            <h5 class="text-danger mb-2 d-flex align-items-center gap-2">
+
+                <svg width="20"
+                     height="20"
+                     fill="none"
+                     stroke="currentColor"
+                     viewBox="0 0 24 24">
+
+                    <path stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z">
+                    </path>
+
+                </svg>
+
+                <span>
+                    Continuous Verification Alert
+                </span>
+
+            </h5>
+
+
+            <p class="text-muted small">
+
+                Background typing dynamics have deviated significantly from your baseline template.
+
+                Please retype your password to confirm active session ownership.
+
+            </p>
+
+
+            @if (!string.IsNullOrEmpty(reauthError))
+            {
+                <div class="alert alert-warning py-2 small">
+                    @reauthError
+                </div>
+            }
+
+
+            <input id="reauth-password-input"
+                   type="password"
+                   class="form-control form-control-vault mb-3"
+                   @bind="reauthPassword"
+                   @bind:event="oninput"
+                   placeholder="Retype your password" />
+
+
+            <button class="btn btn-vault w-100"
+                    disabled="@isReauthSubmitting"
+                    @onclick="SubmitReauthAsync">
+
+                @(isReauthSubmitting
+                    ? "Verifying Dynamics..."
+                    : "Confirm Identity")
+
+            </button>
+
+        </div>
+
+    </div>
+}
+
+
+<!-- =============================================================
+     LAYOUT CSS
+     ============================================================= -->
+<style>
+
+    /*
+         ============================================================
+         GLOBAL LAYOUT
+         ============================================================
+        */
+
+    .vault-app-container {
+        width: 100%;
+        height: 100vh;
+        min-height: 100vh;
+        overflow: hidden;
+        position: relative;
+    }
+
+
+    /*
+         ============================================================
+         MOBILE HEADER
+         ============================================================
+        */
+
+    .mobile-top-header {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 60px;
+        z-index: 1100;
+        flex-shrink: 0;
+    }
+
+
+    /*
+         ============================================================
+         MAIN LAYOUT SHELL
+         ============================================================
+        */
+
+    .vault-layout-shell {
+        width: 100%;
+        height: 100vh;
+        display: flex;
+        position: relative;
+        overflow: hidden;
+    }
+
+
+    /*
+         ============================================================
+         DESKTOP SIDEBAR
+         ============================================================
+        */
+
+    .sidebar-vault {
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        width: 280px;
+        height: 100vh;
+        z-index: 1050;
+        overflow-y: auto;
+        overflow-x: hidden;
+        flex-shrink: 0;
+    }
+
+
+        /*
+         Keep sidebar scrollbar visually subtle
+        */
+
+        .sidebar-vault::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        .sidebar-vault::-webkit-scrollbar-thumb {
+            background: rgba(255,255,255,0.15);
+            border-radius: 10px;
+        }
+
+
+    /*
+         ============================================================
+         MAIN COLUMN
+         ============================================================
+        */
+
+    .main-column {
+        margin-left: 280px;
+        width: calc(100% - 280px);
+        height: 100vh;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+
+    /*
+         ============================================================
+         DESKTOP TOP HEADER
+         ============================================================
+        */
+
+    .desktop-top-header {
+        height: 76px;
+        min-height: 76px;
+        flex-shrink: 0;
+        position: relative;
+        z-index: 1000;
+    }
+
+
+    /*
+         ============================================================
+         MAIN SCROLL AREA
+
+         IMPORTANT:
+         ONLY THIS ELEMENT SCROLLS.
+         ============================================================
+        */
+
+    .main-scroll-area {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        overflow-x: hidden;
+        position: relative;
+    }
+
+
+        /*
+         Main scrollbar
+        */
+
+        .main-scroll-area::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .main-scroll-area::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .main-scroll-area::-webkit-scrollbar-thumb {
+            background: rgba(100, 116, 139, 0.35);
+            border-radius: 10px;
+        }
+
+            .main-scroll-area::-webkit-scrollbar-thumb:hover {
+                background: rgba(100, 116, 139, 0.55);
+            }
+
+
+    /*
+         ============================================================
+         PAGE CONTENT
+         ============================================================
+        */
+
+    .page-content {
+        min-height: 100%;
+        width: 100%;
+    }
+
+
+    /*
+         ============================================================
+         MOBILE
+         ============================================================
+        */
+
+    @@media (max-width: 767.98px) {
+
+        .vault-app-container {
+            height: 100vh;
+            overflow: hidden;
+        }
+
+
+        .vault-layout-shell {
+            height: calc(100vh - 60px);
+            margin-top: 60px;
+        }
+        /*
+             Mobile sidebar
+            */
+
+        .sidebar-vault {
+            top: 60px;
+            bottom: 0;
+            left: 0;
+            width: 280px;
+            height: calc(100vh - 60px);
+            transform: translateX(-100%);
+            transition: transform 0.25s ease;
+            z-index: 1200;
+        }
+
+
+            .sidebar-vault.mobile-open {
+                transform: translateX(0);
+            }
+        /*
+             Mobile main column
+            */
+
+        .main-column {
+            margin-left: 0;
+            width: 100%;
+            height: calc(100vh - 60px);
+        }
+        /*
+             No desktop header on mobile
+            */
+
+        .desktop-top-header {
+            display: none !important;
+        }
+        /*
+             Mobile scrolling area
+            */
+
+        .main-scroll-area {
+            height: calc(100vh - 60px);
+            max-height: calc(100vh - 60px);
+        }
+        /*
+             Mobile backdrop
+            */
+
+        .sidebar-backdrop {
+            position: fixed;
+            top: 60px;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 1150;
+            background: rgba(0, 0, 0, 0.55);
+        }
+    }
+
+
+    /*
+         ============================================================
+         SMALL MOBILE
+         ============================================================
+        */
+
+    @@media (max-width: 480px) {
+
+        .mobile-top-header {
+            height: 56px;
+        }
+
+
+        .vault-layout-shell {
+            height: calc(100vh - 56px);
+            margin-top: 56px;
+        }
+
+
+        .sidebar-vault {
+            top: 56px;
+            height: calc(100vh - 56px);
+        }
+
+
+        .main-column {
+            height: calc(100vh - 56px);
+        }
+
+
+        .main-scroll-area {
+            height: calc(100vh - 56px);
+            max-height: calc(100vh - 56px);
+        }
+
+
+        .sidebar-backdrop {
+            top: 56px;
+        }
+    }
+</style>
+
+
+@code {
+
+    private string masterSecretStatus = string.Empty;
+
+    private string currentTrustLevel = "High";
+
+    private string? currentUsername;
+
+    private int? currentUserId;
+
+    private bool isMobileMenuOpen = false;
+
+
+    private bool showReauthPrompt;
+
+    private string reauthPassword = string.Empty;
+
+    private string? reauthError;
+
+    private bool isReauthSubmitting;
+
+    private bool samplerAttached;
+
+
+    private DotNetObjectReference<MainLayout>? selfReference;
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        masterSecretStatus = EncryptionService.GetMasterSecretStatus();
+
+
+        var authState =
+            await AuthStateProvider.GetAuthenticationStateAsync();
+
+        var user = authState.User;
+
+
+        if (user.Identity?.IsAuthenticated == true)
+        {
+            currentUsername = user.Identity.Name;
+
+            var idClaim =
+                user.FindFirst(
+                    System.Security.Claims.ClaimTypes.NameIdentifier
+                )?.Value;
+
+
+            if (int.TryParse(idClaim, out var id))
+            {
+                currentUserId = id;
+            }
+        }
+
+
+        ContinuousReauthService.OnTrustLevelChanged
+            += HandleTrustLevelChangedAsync;
+
+        ContinuousReauthService.OnReauthRequired
+            += HandleReauthRequiredAsync;
+
+        currentTrustLevel =
+            ContinuousReauthService.CurrentTrustLevel;
+    }
+
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        /*
+         * Attach the background sampler only once
+         * for an authenticated user session.
+         */
+
+        if (currentUserId.HasValue && !samplerAttached)
+        {
+            samplerAttached = true;
+
+            selfReference =
+                DotNetObjectReference.Create(this);
+
+            await JS.InvokeVoidAsync(
+                "keystrokeCapture.attachGlobalSampler",
+                selfReference);
+        }
+
+
+        /*
+         * Attach re-authentication keystroke capture
+         */
+
+        if (showReauthPrompt)
+        {
+            await JS.InvokeVoidAsync(
+                "keystrokeCapture.attach",
+                "reauth-password-input");
+        }
+    }
+
+
+    private void ToggleMobileMenu()
+    {
+        isMobileMenuOpen = !isMobileMenuOpen;
+    }
+
+
+    [JSInvokable("OnContinuousSampleCaptured")]
+    public async Task OnContinuousSampleCaptured(
+        KeystrokeSample sample)
+    {
+        if (!currentUserId.HasValue)
+            return;
+
+
+        var user =
+            await AuthService.GetUserByIdAsync(
+                currentUserId.Value);
+
+
+        if (user is null)
+            return;
+
+
+        await ContinuousReauthService
+            .ProcessContinuousSampleAsync(
+                user,
+                sample);
+    }
+
+
+    private async Task HandleTrustLevelChangedAsync(
+        string newLevel)
+    {
+        currentTrustLevel = newLevel;
+
+        await InvokeAsync(
+            StateHasChanged);
+    }
+
+
+    private async Task HandleReauthRequiredAsync()
+    {
+        showReauthPrompt = true;
+
+        reauthError = null;
+
+        reauthPassword = string.Empty;
+
+        await InvokeAsync(
+            StateHasChanged);
+    }
+
+
+    private async Task SubmitReauthAsync()
+    {
+        if (isReauthSubmitting ||
+            string.IsNullOrEmpty(currentUsername))
+        {
+            return;
+        }
+
+
+        isReauthSubmitting = true;
+
+        reauthError = null;
+
+
+        try
+        {
+            var timingData =
+                await JS.InvokeAsync<KeystrokeSample>(
+                    "keystrokeCapture.getTimingData",
+                    "reauth-password-input");
+
+
+            var user =
+                await AuthService.GetUserByUsernameAsync(
+                    currentUsername);
+
+
+            bool passwordOk =
+                user is not null &&
+                global::BehavioralAuthSystem.Services
+                    .AuthService
+                    .VerifyPassword(
+                        reauthPassword,
+                        user.PasswordHash);
+
+
+            bool rhythmOk = false;
+
+
+            if (user is not null)
+            {
+                var loginPattern =
+                    user.BehavioralPatterns?
+                        .FirstOrDefault(
+                            p => p.ActionType == "login");
+
+
+                if (loginPattern is not null)
+                {
+                    var verification =
+                        KeystrokeService.VerifySample(
+                            timingData,
+                            loginPattern);
+
+                    rhythmOk =
+                        verification.IsPassed;
+                }
+            }
+
+
+            if (passwordOk && rhythmOk)
+            {
+                ContinuousReauthService
+                    .ResetTrustLevel();
+
+                showReauthPrompt = false;
+
+                reauthPassword = string.Empty;
+
+
+                await JS.InvokeVoidAsync(
+                    "keystrokeCapture.detach",
+                    "reauth-password-input");
+            }
+            else
+{
+    if (!passwordOk)
+    {
+        reauthError = "Password verification failed. Please check your password.";
+    }
+    else if (user is null)
+    {
+        reauthError = "User account could not be loaded.";
+    }
+    else if (user.BehavioralPatterns?
+                 .FirstOrDefault(p => p.ActionType == "login") is null)
+    {
+        reauthError = "No enrolled login typing pattern was found.";
+    }
+    else if (timingData is null ||
+             timingData.HoldTimes == null ||
+             timingData.HoldTimes.Count == 0)
+    {
+        reauthError = "No typing data was captured. Please type the password manually.";
+    }
+    else
+    {
+        var loginPattern = user.BehavioralPatterns!
+            .First(p => p.ActionType == "login");
+
+        var result = KeystrokeService.VerifySample(
+            timingData,
+            loginPattern);
+
+        reauthError = result.Message;
+    }
+
+    await JS.InvokeVoidAsync(
+        "keystrokeCapture.reset",
+        "reauth-password-input");
+}
+        }
+        catch (Exception)
+        {
+            reauthError =
+                "Verification error. Please retry.";
+        }
+        finally
+        {
+            isReauthSubmitting = false;
+        }
+    }
+
+
+    private async Task HandleLogout()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync(
+                "keystrokeCapture.detachGlobalSampler");
+
+            await JS.InvokeVoidAsync(
+                "authInterop.logout");
+        }
+        catch
+        {
+            Navigation.NavigateTo(
+                "api/auth/sign-out",
+                forceLoad: true);
+        }
+    }
+
+
+    public async ValueTask DisposeAsync()
+    {
+        ContinuousReauthService.OnTrustLevelChanged
+            -= HandleTrustLevelChangedAsync;
+
+        ContinuousReauthService.OnReauthRequired
+            -= HandleReauthRequiredAsync;
+
+
+        try
+        {
+            await JS.InvokeVoidAsync(
+                "keystrokeCapture.detachGlobalSampler");
+        }
+        catch
+        {
+        }
+
+
+        selfReference?.Dispose();
+
+
+        if (showReauthPrompt)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync(
+                    "keystrokeCapture.detach",
+                    "reauth-password-input");
+            }
+            catch
+            {
+            }
+        }
+    }
+
+}

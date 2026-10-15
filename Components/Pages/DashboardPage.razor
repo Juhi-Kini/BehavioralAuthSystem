@@ -1,0 +1,187 @@
+@page "/"
+@attribute [Authorize]
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IAuthService AuthService
+@inject IFileStorageService FileStorageService
+
+<PageTitle>Dashboard - BehavioralAuthSystem</PageTitle>
+
+<div class="container-fluid p-0">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3 mb-4">
+        <div>
+            <h2 class="m-0 text-primary">Encrypted Cloud Vault</h2>
+            <p class="text-muted small m-0">Zero-trust architecture with AES-256-GCM file storage & Keystroke Dynamics 2FA</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="files" class="btn btn-vault btn-sm d-flex align-items-center gap-2">
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"></path>
+                </svg>
+                <span>Encrypted Files</span>
+            </a>
+            <a href="editor" class="btn btn-vault-secondary btn-sm d-flex align-items-center gap-2">
+                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path>
+                </svg>
+                <span>Create Document</span>
+            </a>
+        </div>
+    </div>
+
+    @if (currentUser == null)
+    {
+        <div class="vault-card text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p class="text-muted small mt-2">Loading secure cryptographic session...</p>
+        </div>
+    }
+    else
+    {
+        <!-- Metrics Row -->
+        <div class="row g-3 mb-4">
+            <div class="col-md-4">
+                <div class="vault-card h-100">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <span class="text-muted small fw-semibold">STORAGE QUOTA</span>
+                        <div class="p-2 rounded bg-teal-subtle text-teal">
+                            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <h3 class="m-0 mb-1">@((usedStorageBytes / (1024.0 * 1024.0)).ToString("F2")) MB</h3>
+                    <div class="progress mb-2" style="height: 6px;">
+                        <div class="progress-bar bg-teal" style="width: @(Math.Min(100, (usedStorageBytes * 100.0) / MaxQuotaBytes))%"></div>
+                    </div>
+                    <div class="d-flex justify-content-between text-muted" style="font-size: 0.75rem;">
+                        <span>Used: @((usedStorageBytes / (1024.0 * 1024.0)).ToString("F2")) MB</span>
+                        <span>Max Quota: @((MaxQuotaBytes / (1024.0 * 1024.0)).ToString("F0")) MB</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="vault-card h-100">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <span class="text-muted small fw-semibold">ENCRYPTED FILES</span>
+                        <div class="p-2 rounded bg-teal-subtle text-teal">
+                            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <h3 class="m-0 mb-1">@userFiles.Count</h3>
+                    <p class="text-muted small m-0">Encrypted with unique HKDF derived keys (AES-256-GCM)</p>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="vault-card h-100">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <span class="text-muted small fw-semibold">BIOMETRIC CONFIDENCE</span>
+                        <div class="p-2 rounded bg-teal-subtle text-teal">
+                            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"></path>
+                            </svg>
+                        </div>
+                    </div>
+                    <h3 class="m-0 mb-1 text-teal">
+                        @(userLogs.FirstOrDefault(l => l.ActionType == "login" && l.IsSuccessful)?.Score.ToString("F1") ?? "100.0")%
+                    </h3>
+                    <p class="text-muted small m-0">Most recent authenticated login typing rhythm score</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Audit Logs Table -->
+        <div class="vault-card mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h5 class="m-0 text-primary">Recent Authentication & Verification Audit Logs</h5>
+                <a href="analytics" class="small text-primary text-decoration-none fw-semibold">Full Analytics & Audit Trail →</a>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0" style="font-size: 0.85rem;">
+                    <thead>
+                        <tr class="table-light">
+                            <th>Time (UTC)</th>
+                            <th>Action Type</th>
+                            <th>Status</th>
+                            <th>Confidence</th>
+                            <th>Distance (Z)</th>
+                            <th>Threshold Cutoff</th>
+                            <th>Anomaly Flag</th>
+                            <th>Detail</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (userLogs.Count == 0)
+                        {
+                            <tr>
+                                <td colspan="8" class="text-center text-muted py-4">No audit logs recorded yet.</td>
+                            </tr>
+                        }
+                        else
+                        {
+                            @foreach (var log in userLogs.Take(8))
+                            {
+                                <tr>
+                                    <td>@log.AttemptTime.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                                    <td>
+                                        <span class="badge bg-secondary-subtle text-secondary border">@log.ActionType</span>
+                                    </td>
+                                    <td>
+                                        @if (log.IsSuccessful)
+                                        {
+                                            <span class="badge bg-success-subtle text-success border border-success-subtle">Success</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-danger-subtle text-danger border border-danger-subtle">Failed</span>
+                                        }
+                                    </td>
+                                    <td class="fw-semibold">@log.Score.ToString("F1")%</td>
+                                    <td>@log.ZScore.ToString("F2")</td>
+                                    <td>@log.AdaptiveThreshold.ToString("F2")</td>
+                                    <td>
+                                        @if (log.IsSuspicious)
+                                        {
+                                            <span class="badge bg-warning-subtle text-warning border border-warning-subtle">⚠️ Suspicious</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">Normal</span>
+                                        }
+                                    </td>
+                                    <td class="text-muted small">@log.FailureReason</td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private User? currentUser;
+    private List<FileRecord> userFiles = new List<FileRecord>();
+    private List<AuthLog> userLogs = new List<AuthLog>();
+    private long usedStorageBytes = 0;
+    private long MaxQuotaBytes => currentUser?.StorageQuotaBytes > 0 ? currentUser.StorageQuotaBytes : 500L * 1024 * 1024;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (state.User.Identity != null && state.User.Identity.IsAuthenticated)
+        {
+            currentUser = await AuthService.GetUserByUsernameAsync(state.User.Identity.Name!);
+            if (currentUser != null)
+            {
+                userFiles = await FileStorageService.GetUserFilesAsync(currentUser.Id);
+                userLogs = await AuthService.GetUserAuthLogsAsync(currentUser.Id);
+                usedStorageBytes = await FileStorageService.GetUserStorageUsageAsync(currentUser.Id);
+            }
+        }
+    }
+}

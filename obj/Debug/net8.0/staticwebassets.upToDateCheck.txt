@@ -1,0 +1,9 @@
+wwwroot\app.css
+wwwroot\bootstrap\bootstrap.min.css
+wwwroot\bootstrap\bootstrap.min.css.map
+wwwroot\favicon.png
+wwwroot\js\behavioral-capture.js
+wwwroot\js\chart-interop.js
+wwwroot\js\quill-interop.js
+wwwroot\js\waveform.js
+wwwroot\js\keystroke.js

@@ -1,0 +1,25 @@
+<div class="d-inline-flex align-items-center">
+    @if (TrustLevel == "High")
+    {
+        <span class="trust-badge trust-badge-teal" title="Keystroke dynamics verified & encryption key active">
+            🛡️ Biometrics Active & Enforced
+        </span>
+    }
+    else if (TrustLevel == "ElevatedRisk")
+    {
+        <span class="trust-badge trust-badge-amber" title="Higher variance detected in typing dynamics">
+            ⚠️ Elevated Rhythm Variance
+        </span>
+    }
+    else
+    {
+        <span class="trust-badge trust-badge-rose" title="Security anomaly flagged or verification required">
+            🚨 Security Alert / Verification Needed
+        </span>
+    }
+</div>
+
+@code {
+    [Parameter]
+    public string TrustLevel { get; set; } = "High";
+}

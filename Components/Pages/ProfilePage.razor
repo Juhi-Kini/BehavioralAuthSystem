@@ -1,0 +1,221 @@
+@page "/profile"
+@attribute [Authorize]
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IAuthService AuthService
+@inject IBehavioralPatternService BehavioralPatternService
+@inject IJSRuntime JS
+
+<PageTitle>Profile & Re-enrollment - BehavioralAuthSystem</PageTitle>
+
+<div class="container-fluid p-0">
+    <div class="mb-4">
+        <h2 class="m-0 text-primary">Profile & Security</h2>
+        <p class="text-muted small m-0">Manage your recovery email, password recovery and behavioral patterns.</p>
+    </div>
+
+    @if (currentUser == null)
+    {
+        <div class="vault-card p-5 text-center">Loading profile...</div>
+    }
+    else
+    {
+        <div class="row g-3 mb-4">
+            <div class="col-md-4">
+                <div class="vault-card h-100">
+                    <span class="text-muted small fw-semibold">USERNAME</span>
+                    <h4 class="mt-2">@currentUser.Username</h4>
+                    <p class="text-muted small mb-0">Account created @currentUser.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd")</p>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="vault-card h-100">
+                    <span class="text-muted small fw-semibold">RECOVERY EMAIL</span>
+                    <h5 class="mt-2 mb-1">@(!string.IsNullOrWhiteSpace(currentUser.Email) ? currentUser.Email : "Not configured")</h5>
+                    <span class="small @(currentUser.EmailVerifiedAt.HasValue ? "text-success" : "text-muted")">
+                        @(currentUser.EmailVerifiedAt.HasValue ? "✓ Verified" : "Used for password recovery")
+                    </span>
+                </div>
+            </div>
+
+            <div class="col-md-4">
+                <div class="vault-card h-100">
+                    <span class="text-muted small fw-semibold">ENCRYPTION</span>
+                    <h4 class="mt-2 text-teal">AES-256-GCM</h4>
+                    <p class="text-muted small mb-0">Per-user salt + HKDF-SHA256 key derivation.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="vault-card mb-4">
+            <div class="mb-3">
+                <h5 class="text-primary m-0">Password Recovery Email</h5>
+                <span class="text-muted small">Keep this address current so you can recover your account if you forget your password.</span>
+            </div>
+
+            <div class="row g-2 align-items-end">
+                <div class="col-md-8">
+                    <label class="form-label small fw-semibold">Recovery Email</label>
+                    <input type="email"
+                           class="form-control form-control-vault"
+                           @bind="recoveryEmail"
+                           placeholder="you@example.com" />
+                </div>
+                <div class="col-md-4">
+                    <button class="btn btn-vault w-100" @onclick="SaveEmail" disabled="@savingEmail">
+                        @(savingEmail ? "Saving..." : "Save Recovery Email")
+                    </button>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(emailMessage))
+            {
+                <div class="alert @(emailSuccess ? "alert-success" : "alert-danger") py-2 small mt-3 mb-0">
+                    @emailMessage
+                </div>
+            }
+
+            <div class="mt-3">
+                <a href="/forgot-password" class="btn btn-vault-secondary btn-sm">
+                    ✉️ Reset Password by Email
+                </a>
+            </div>
+        </div>
+
+        <div class="vault-card">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <h5 class="text-primary m-0">Behavioral Pattern Enrollment</h5>
+                    <span class="text-muted small">Re-record any protected action from the setup page.</span>
+                </div>
+                <a class="btn btn-vault btn-sm" href="/behavioral-actions">Open Behavioral Actions</a>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table align-middle">
+                    <thead>
+                        <tr>
+                            <th>Action</th>
+                            <th>Pattern</th>
+                            <th>Created</th>
+                            <th class="text-end">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    @foreach (var action in Actions)
+                    {
+                        var p = patterns.FirstOrDefault(x => x.ActionType == action);
+                        <tr>
+                            <td><strong>@action</strong></td>
+                            <td>@(p?.PatternType ?? "Not enrolled")</td>
+                            <td>@(p?.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm") ?? "—")</td>
+                            <td class="text-end">
+                                @if (p != null)
+                                {
+                                    <button class="btn btn-outline-danger btn-sm" @onclick="() => DeletePattern(action)">Remove</button>
+                                }
+                                else
+                                {
+                                    <a href="/behavioral-actions" class="btn btn-vault-secondary btn-sm">Enroll</a>
+                                }
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(message))
+        {
+            <div class="alert alert-info mt-3">@message</div>
+        }
+    }
+</div>
+
+@code {
+    private User? currentUser;
+    private List<BehavioralPattern> patterns = new();
+    private string message = "";
+    private string recoveryEmail = "";
+    private string emailMessage = "";
+    private bool emailSuccess;
+    private bool savingEmail;
+
+    private readonly string[] Actions = { "Create", "Upload", "Update", "View",
+    "Download",
+    "Restore",
+    "Move to Trash",
+    "Purge" };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthStateProvider.GetAuthenticationStateAsync();
+
+        if (state.User.Identity?.IsAuthenticated == true)
+        {
+            currentUser = await AuthService.GetUserByUsernameAsync(state.User.Identity.Name!);
+
+            if (currentUser != null)
+            {
+                recoveryEmail = currentUser.Email ?? "";
+                patterns = await BehavioralPatternService.GetPatternsAsync(currentUser.Id);
+            }
+        }
+    }
+
+    private async Task SaveEmail()
+    {
+        if (currentUser == null)
+            return;
+
+        savingEmail = true;
+        emailMessage = "";
+
+        try
+        {
+            var result = await AuthService.UpdateRecoveryEmailAsync(
+                currentUser.Id,
+                recoveryEmail);
+
+            emailSuccess = result.Success;
+            emailMessage = result.Message;
+
+            if (result.Success)
+            {
+                currentUser.Email = recoveryEmail.Trim().ToLowerInvariant();
+                currentUser.EmailVerifiedAt = null;
+            }
+        }
+        catch (Exception ex)
+        {
+            emailSuccess = false;
+            emailMessage = $"Could not save email: {ex.Message}";
+        }
+        finally
+        {
+            savingEmail = false;
+        }
+    }
+    private async Task DeletePattern(string action)
+    {
+        if (currentUser == null)
+            return;
+
+        bool confirmed = await JS.InvokeAsync<bool>(
+            "confirm",
+            $"Are you sure you want to remove the {action} behavioral pattern?");
+
+        if (!confirmed)
+            return;
+
+        await BehavioralPatternService.DeletePatternAsync(
+            currentUser.Id,
+            action);
+
+        patterns = await BehavioralPatternService.GetPatternsAsync(
+            currentUser.Id);
+
+        message = $"{action} pattern removed. You can enroll a new one from Behavioral Actions.";
+    }
+}

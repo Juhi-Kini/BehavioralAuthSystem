@@ -1,0 +1,493 @@
+@page "/editor"
+@page "/editor/{FileId:int}"
+@attribute [Authorize]
+@implements IDisposable
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IAuthService AuthService
+@inject IFileStorageService FileStorageService
+@inject IJSRuntime JS
+@inject NavigationManager Navigation
+
+<PageTitle>Document Editor - BehavioralAuthSystem</PageTitle>
+
+<div class="container-fluid p-0">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3 mb-3">
+        <div>
+            <h3 class="m-0 text-primary">Rich Text Document Editor</h3>
+            @if (activeFile != null)
+            {
+                <span class="badge bg-secondary-subtle text-secondary border">@activeFile.FileName</span>
+            }
+            else
+            {
+                <span class="badge bg-teal-subtle text-teal border border-teal-subtle">New Rich Text Document</span>
+            }
+        </div>
+        <div class="d-flex gap-2">
+            <button type="button" class="btn btn-vault-secondary btn-sm" @onclick="ExportPdf">Export PDF</button>
+            <button type="button" class="btn btn-vault btn-sm" @onclick="RequestSaveDocument" disabled="@isSaving">
+                @if (isSaving)
+                {
+                    <span class="spinner-border spinner-border-sm me-1"></span><span>Encrypting &amp; Saving...</span>
+                }
+                else
+                {
+                    <span>Save &amp; Snapshot</span>
+                }
+            </button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrEmpty(statusMessage))
+    {
+        <div class="alert alert-info py-2 px-3 small mb-3 d-flex justify-content-between align-items-center">
+            <span>@statusMessage</span>
+            <button type="button" class="btn-close" @onclick="() => statusMessage = string.Empty"></button>
+        </div>
+    }
+
+    <div class="vault-card mb-3 p-3">
+        <div class="row g-2 align-items-center">
+            <div class="col-md-4">
+                <input type="text" class="form-control form-control-sm form-control-vault" @bind="fileName" placeholder="Document Name (e.g. notes.md)" />
+            </div>
+            <div class="col-md-4 d-flex align-items-center gap-2">
+                <input type="text" class="form-control form-control-sm form-control-vault" @bind="findText" placeholder="Find text..." />
+                <input type="text" class="form-control form-control-sm form-control-vault" @bind="replaceText" placeholder="Replace..." />
+                <button type="button" class="btn btn-vault-secondary btn-sm" @onclick="FindAndReplace">Replace</button>
+            </div>
+            <div class="col-md-4 text-end text-muted small">
+                Words: <strong>@WordCount</strong> | Chars: <strong>@CharCount</strong> | <span class="text-teal">Saving requires verification</span>
+            </div>
+        </div>
+    </div>
+
+    @if (isMarkdown)
+    {
+        <div class="row g-3">
+            <div class="col-md-6">
+                <div class="vault-card p-2 h-100">
+                    <label class="form-label small fw-semibold text-muted">Markdown Source</label>
+                    <textarea class="form-control border-0 p-2" style="height:520px; font-family:var(--font-mono); resize:none; outline:none; background:transparent; color:var(--text-main);" @bind="documentContent" @bind:event="oninput" placeholder="Write your encrypted notes here..."></textarea>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="vault-card p-3 overflow-auto" style="height:555px;">
+                    <label class="form-label small fw-semibold text-muted">Live Preview</label>
+                    <div class="markdown-body p-2 border-top border-color">
+                        @((MarkupString)Markdig.Markdown.ToHtml(documentContent ?? string.Empty))
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="vault-card p-3">
+            <div class="rich-editor-toolbar-note mb-2">
+                <span>Word-style formatting</span>
+                <small>Choose font, size, color, alignment, lists and more from the toolbar.</small>
+            </div>
+            <div id="quill-editor" class="rich-document-editor"></div>
+        </div>
+    }
+
+    @if (fileVersions.Count > 0)
+    {
+        <div class="vault-card mt-4 p-3">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="text-primary m-0 fw-bold">Encrypted Version History</h6>
+                <span class="text-muted small">Previous snapshots</span>
+            </div>
+            <div class="d-flex gap-3 overflow-auto py-2">
+                @foreach (var ver in fileVersions)
+                {
+                    <div class="border border-color rounded p-3 small" style="min-width:220px;">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <span class="badge bg-teal">v@ver.VersionNumber</span>
+                            <span class="text-muted">@((ver.SizeBytes / 1024.0).ToString("F1")) KB</span>
+                        </div>
+                        <div class="text-muted mb-2">@ver.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss")</div>
+                        <button type="button" class="btn btn-vault-secondary btn-sm w-100" @onclick="() => RequestRestoreSnapshot(ver.Id)">Restore v@ver.VersionNumber</button>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+
+<ActionVerificationModal @bind-IsOpen="showActionModal"
+                         CurrentUser="currentUser"
+                         ActionType="@editorActionType"
+                         OperationContext="@(FileId.HasValue ? $"Update file '{fileName}'" : "Create a new file")"
+                         OnVerificationPassed="HandleEditorVerificationPassed" />
+
+<style>
+    .rich-editor-toolbar-note {
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:12px;
+        color:var(--text-main,#1e293b);
+        font-weight:600;
+        font-size:.9rem;
+    }
+
+    .rich-editor-toolbar-note small {
+        color:#64748b;
+        font-weight:400;
+    }
+
+    .rich-document-editor {
+        min-height:520px;
+        background:#fff;
+        color:#111827;
+        border-radius:0 0 8px 8px;
+    }
+
+    .ql-toolbar.ql-snow {
+        border-radius:8px 8px 0 0;
+        background:#f8fafc;
+        border-color:#dbe5ef;
+    }
+
+    .ql-container.ql-snow {
+        border-color:#dbe5ef;
+        font-family:Arial,sans-serif;
+        font-size:14px;
+    }
+
+    .ql-snow .ql-picker.ql-font .ql-picker-label[data-value="arial"]::before,
+    .ql-snow .ql-picker.ql-font .ql-picker-item[data-value="arial"]::before {
+        content:"Arial";
+    }
+
+    .ql-snow .ql-picker.ql-font .ql-picker-label[data-value="calibri"]::before,
+    .ql-snow .ql-picker.ql-font .ql-picker-item[data-value="calibri"]::before {
+        content:"Calibri";
+    }
+
+    .ql-snow .ql-picker.ql-font .ql-picker-label[data-value="times-new-roman"]::before,
+    .ql-snow .ql-picker.ql-font .ql-picker-item[data-value="times-new-roman"]::before {
+        content:"Times New Roman";
+    }
+
+    .ql-snow .ql-picker.ql-font .ql-picker-label[data-value="georgia"]::before,
+    .ql-snow .ql-picker.ql-font .ql-picker-item[data-value="georgia"]::before {
+        content:"Georgia";
+    }
+
+    .ql-snow .ql-picker.ql-font .ql-picker-label[data-value="verdana"]::before,
+    .ql-snow .ql-picker.ql-font .ql-picker-item[data-value="verdana"]::before {
+        content:"Verdana";
+    }
+
+    .ql-snow .ql-picker.ql-font .ql-picker-label[data-value="aptos"]::before,
+    .ql-snow .ql-picker.ql-font .ql-picker-item[data-value="aptos"]::before {
+        content:"Aptos";
+    }
+
+    .ql-font-arial { font-family:Arial,sans-serif; }
+    .ql-font-calibri { font-family:Calibri,sans-serif; }
+    .ql-font-times-new-roman { font-family:"Times New Roman",serif; }
+    .ql-font-georgia { font-family:Georgia,serif; }
+    .ql-font-verdana { font-family:Verdana,sans-serif; }
+    .ql-font-aptos { font-family:Aptos,Calibri,sans-serif; }
+
+    .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="10px"]::before,
+    .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="10px"]::before { content:"10"; }
+    .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="11px"]::before,
+    .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="11px"]::before { content:"11"; }
+    .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="12px"]::before,
+    .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="12px"]::before { content:"12"; }
+    .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="14px"]::before,
+    .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="14px"]::before { content:"14"; }
+    .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="16px"]::before,
+    .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="16px"]::before { content:"16"; }
+    .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="18px"]::before,
+    .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="18px"]::before { content:"18"; }
+    .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="20px"]::before,
+    .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="20px"]::before { content:"20"; }
+    .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="24px"]::before,
+    .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="24px"]::before { content:"24"; }
+    .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="28px"]::before,
+    .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="28px"]::before { content:"28"; }
+    .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="32px"]::before,
+    .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="32px"]::before { content:"32"; }
+    .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="36px"]::before,
+    .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="36px"]::before { content:"36"; }
+    .ql-snow .ql-picker.ql-size .ql-picker-label[data-value="48px"]::before,
+    .ql-snow .ql-picker.ql-size .ql-picker-item[data-value="48px"]::before { content:"48"; }
+
+    .ql-snow .ql-undo::before { content:"↶"; font-size:18px; }
+    .ql-snow .ql-redo::before { content:"↷"; font-size:18px; }
+
+    @@media (max-width: 768px) {
+        .rich-editor-toolbar-note {
+            align-items:flex-start;
+            flex-direction:column;
+        }
+
+        .rich-document-editor {
+            min-height:420px;
+        }
+    }
+</style>
+
+@code {
+    [Parameter] public int? FileId { get; set; }
+
+    private User? currentUser;
+    private FileRecord? activeFile;
+    private bool showActionModal;
+    private PendingEditorOperation pendingOperation = PendingEditorOperation.None;
+    private int? pendingRestoreVersionId;
+    private string editorActionType = "Create";
+    private List<FileVersion> fileVersions = new List<FileVersion>();
+
+    private string fileName = "confidential_document.html";
+    private string documentContent = "# Confidential Research Notes\n\nThis document is protected with AES-256-GCM encryption.\n\n### Key Principles\n- Keystroke dynamics biometrics verify identity.\n- All snapshots are versioned and encrypted.";
+    private string findText = string.Empty;
+    private string replaceText = string.Empty;
+    private string statusMessage = string.Empty;
+    private bool isSaving = false;
+    private bool isMarkdown => fileName.EndsWith(".md", StringComparison.OrdinalIgnoreCase) || fileName.EndsWith(".markdown", StringComparison.OrdinalIgnoreCase);
+private enum PendingEditorOperation
+{
+    None,
+    LoadExistingFile,
+    Save,
+    RestoreSnapshot
+}
+    private DotNetObjectReference<DocumentEditorPage>? dotNetRef;
+
+    private int WordCount => (documentContent ?? string.Empty)
+        .Split(new[] { ' ', '\r', '\n', '\t' }, StringSplitOptions.RemoveEmptyEntries).Length;
+    private int CharCount => (documentContent ?? string.Empty).Length;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (state.User.Identity?.IsAuthenticated == true)
+        {
+            currentUser = await AuthService.GetUserByUsernameAsync(state.User.Identity.Name!);
+            if (currentUser != null && FileId.HasValue)
+            {
+                // Verify before decrypting/loading an existing document.
+                editorActionType = "Update";
+                pendingOperation = PendingEditorOperation.LoadExistingFile;
+                showActionModal = true;
+            }
+        }
+    }
+
+    private async Task HandleEditorVerificationPassed()
+    {
+        showActionModal = false;
+
+        var operation = pendingOperation;
+        pendingOperation = PendingEditorOperation.None;
+
+        switch (operation)
+        {
+            case PendingEditorOperation.LoadExistingFile:
+                await LoadExistingFileAfterVerification();
+                break;
+
+            case PendingEditorOperation.Save:
+                await SaveDocumentCore();
+                break;
+
+            case PendingEditorOperation.RestoreSnapshot:
+                if (pendingRestoreVersionId.HasValue)
+                    await RestoreSnapshotCore(pendingRestoreVersionId.Value);
+                break;
+        }
+    }
+
+    private async Task LoadExistingFileAfterVerification()
+    {
+        if (currentUser == null || !FileId.HasValue)
+            return;
+
+        var (isSuccess, msg, bytes, name, type) =
+            await FileStorageService.DownloadFileAsync(currentUser, FileId.Value);
+
+        if (isSuccess && bytes != null)
+        {
+            activeFile = await FileStorageService.GetFileByIdAsync(FileId.Value, currentUser.Id);
+            fileName = name;
+            documentContent = System.Text.Encoding.UTF8.GetString(bytes);
+            fileVersions = await FileStorageService.GetFileVersionsAsync(FileId.Value, currentUser.Id);
+            statusMessage = "Document loaded after behavioral verification.";
+        }
+        else
+        {
+            statusMessage = msg;
+        }
+    }
+
+    private void RequestSaveDocument()
+    {
+        if (currentUser == null)
+        {
+            statusMessage = "You must be signed in before saving.";
+            return;
+        }
+
+        if (isSaving)
+            return;
+
+        editorActionType = activeFile == null ? "Create" : "Update";
+        pendingOperation = PendingEditorOperation.Save;
+        showActionModal = true;
+    }
+
+    private void RequestRestoreSnapshot(int versionId)
+    {
+        if (currentUser == null || activeFile == null)
+        {
+            statusMessage = "Load a document before restoring a snapshot.";
+            return;
+        }
+
+        pendingRestoreVersionId = versionId;
+        editorActionType = "Restore";
+        pendingOperation = PendingEditorOperation.RestoreSnapshot;
+        showActionModal = true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !isMarkdown)
+        {
+            try
+            {
+                dotNetRef = DotNetObjectReference.Create(this);
+                await JS.InvokeVoidAsync("quillInterop.init", "quill-editor", documentContent, dotNetRef);
+            }
+            catch { }
+        }
+    }
+
+    [JSInvokable]
+    public void OnContentChanged(string content)
+    {
+        documentContent = content;
+        StateHasChanged();
+    }
+
+    private void FindAndReplace()
+    {
+        if (!string.IsNullOrEmpty(findText) && documentContent != null)
+        {
+            documentContent = documentContent.Replace(findText, replaceText ?? string.Empty);
+            statusMessage = $"Replaced occurrences of '{findText}' with '{replaceText}'.";
+        }
+    }
+
+    private async Task SaveDocumentCore()
+    {
+        if (currentUser == null)
+        {
+            statusMessage = "You must be signed in before saving.";
+            return;
+        }
+        isSaving = true;
+        statusMessage = string.Empty;
+
+        try
+        {
+            byte[] bytes = System.Text.Encoding.UTF8.GetBytes(documentContent ?? string.Empty);
+            string contentType = isMarkdown ? "text/markdown" : "text/html";
+
+            if (activeFile == null)
+            {
+                var (isSuccess, msg, record) = await FileStorageService.UploadFileAsync(currentUser, fileName, contentType, bytes);
+                if (isSuccess && record != null)
+                {
+                    activeFile = record;
+                    fileVersions = await FileStorageService.GetFileVersionsAsync(record.Id, currentUser.Id);
+                    statusMessage = "Document created and encrypted successfully.";
+                }
+                else statusMessage = msg;
+            }
+            else
+            {
+                var (isSuccess, msg, version) = await FileStorageService.CreateVersionSnapshotAsync(currentUser, activeFile.Id, bytes);
+                if (isSuccess)
+                {
+                    statusMessage = $"Document updated and version snapshot v{version?.VersionNumber} created!";
+                    fileVersions = await FileStorageService.GetFileVersionsAsync(activeFile.Id, currentUser.Id);
+                }
+                else statusMessage = msg;
+            }
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"Save failed: {ex.Message}";
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+
+    private async Task RestoreSnapshotCore(int versionId)
+    {
+        if (currentUser == null || activeFile == null) return;
+
+        var (isSuccess, msg) = await FileStorageService.RestoreVersionAsync(activeFile.Id, versionId, currentUser.Id);
+        statusMessage = msg;
+
+        if (isSuccess)
+        {
+            var (dlSuccess, dlMsg, bytes, name, type) = await FileStorageService.DownloadFileAsync(currentUser, activeFile.Id);
+            if (dlSuccess && bytes != null)
+            {
+                documentContent = System.Text.Encoding.UTF8.GetString(bytes);
+                fileVersions = await FileStorageService.GetFileVersionsAsync(activeFile.Id, currentUser.Id);
+            }
+        }
+    }
+
+    private async Task ExportPdf()
+    {
+        try
+        {
+            byte[] pdfBytes;
+            using (var ms = new MemoryStream())
+            {
+                QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
+                var doc = QuestPDF.Fluent.Document.Create(container =>
+                {
+                    container.Page(page =>
+                    {
+                        page.Margin(30);
+                        page.Header().Text(fileName).FontSize(18).SemiBold();
+                        page.Content().PaddingVertical(10).Text(documentContent ?? string.Empty).FontSize(10);
+                        page.Footer().AlignCenter().Text(x => { x.Span("Page "); x.CurrentPageNumber(); });
+                    });
+                });
+                doc.GeneratePdf(ms);
+
+                pdfBytes = ms.ToArray();
+            }
+
+            string base64 = Convert.ToBase64String(pdfBytes);
+            string pdfName = Path.ChangeExtension(fileName, ".pdf");
+            await JS.InvokeVoidAsync("fileDownloadInterop.downloadFileFromBytes", pdfName, "application/pdf", base64);
+            statusMessage = $"Exported PDF document '{pdfName}'.";
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"PDF export error: {ex.Message}";
+        }
+    }
+
+    public void Dispose()
+    {
+        dotNetRef?.Dispose();
+    }
+}
