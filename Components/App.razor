@@ -26,7 +26,12 @@
 
 <body>
     <Routes @rendermode="InteractiveServer" />
-    <script src="_framework/blazor.web.js"></script>
+    
+<script src="https://unpkg.com/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://unpkg.com/docx-preview@0.3.6/dist/docx-preview.min.js"></script>
+<script src="js/docx-preview-interop.js"></script>
+<script src="_framework/blazor.web.js"></script>
+
     <script>
         // Init theme from localStorage
         (function() {

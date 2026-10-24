@@ -4,6 +4,7 @@ wwwroot\bootstrap\bootstrap.min.css.map
 wwwroot\favicon.png
 wwwroot\js\behavioral-capture.js
 wwwroot\js\chart-interop.js
+wwwroot\js\docx-preview-interop.js
+wwwroot\js\keystroke.js
 wwwroot\js\quill-interop.js
 wwwroot\js\waveform.js
-wwwroot\js\keystroke.js

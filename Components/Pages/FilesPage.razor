@@ -218,26 +218,64 @@
 <!-- Inline Preview Modal -->
 @if (showPreviewModal && previewFileRecord != null)
 {
+    var previewName = previewFileRecord.FileName ?? string.Empty;
+    var previewType = previewFileRecord.ContentType ?? string.Empty;
+    var isPdf = previewName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)
+        || previewType.Equals("application/pdf", StringComparison.OrdinalIgnoreCase);
+    var isDocx = previewName.EndsWith(".docx", StringComparison.OrdinalIgnoreCase);
+    var isImage = previewType.StartsWith("image/", StringComparison.OrdinalIgnoreCase);
+    var isText = previewName.EndsWith(".txt", StringComparison.OrdinalIgnoreCase)
+        || previewType.StartsWith("text/", StringComparison.OrdinalIgnoreCase);
+
     <div class="modal-vault-backdrop">
-        <div class="modal-vault-content" style="max-width: 800px;">
+        <div class="modal-vault-content" style="max-width: 1000px; width: 95%;">
             <div class="d-flex justify-content-between align-items-center mb-3">
-                <h5 class="m-0 text-primary">Decrypted Preview: @previewFileRecord.FileName</h5>
-                <button class="btn-close" @onclick="() => showPreviewModal = false"></button>
+                <h5 class="m-0 text-primary">Preview: @previewName</h5>
+                <button type="button" class="btn-close" aria-label="Close" @onclick="ClosePreview"></button>
             </div>
 
-            <div class="p-3 border rounded overflow-auto bg-body-tertiary" style="max-height: 450px;">
-                @if (previewFileRecord.ContentType.StartsWith("image/"))
+            <div class="border rounded bg-body-tertiary p-2" style="height: 70vh; min-height: 350px; overflow: auto;">
+                @if (previewBytes == null || previewBytes.Length == 0)
                 {
-                    <img src="data:@previewFileRecord.ContentType;base64,@Convert.ToBase64String(previewBytes ?? Array.Empty<byte>())" class="img-fluid rounded mx-auto d-block" alt="Preview" />
+                    <div class="alert alert-warning">The decrypted file is empty or could not be loaded.</div>
+                }
+                else if (isPdf)
+                {
+                    <iframe title="PDF Preview"
+                            src="@($"data:application/pdf;base64,{Convert.ToBase64String(previewBytes)}")"
+                            style="width: 100%; height: 100%; min-height: 350px; border: none; background: white;">
+                    </iframe>
+                }
+                else if (isDocx)
+                {
+                    <div id="docx-preview-container" style="min-height: 100%; background: white; padding: 16px; color: #212529;">
+                        Preparing Word document preview...
+                    </div>
+                }
+                else if (isImage)
+                {
+                    <div class="text-center">
+                        <img src="@($"data:{previewType};base64,{Convert.ToBase64String(previewBytes)}")"
+                             class="img-fluid rounded mx-auto d-block"
+                             alt="@previewName" />
+                    </div>
+                }
+                else if (isText)
+                {
+                    <pre style="white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-mono); font-size: 0.85rem; margin: 0;">@System.Text.Encoding.UTF8.GetString(previewBytes)</pre>
                 }
                 else
                 {
-                    <pre style="white-space: pre-wrap; font-family: var(--font-mono); font-size: 0.85rem; margin: 0;">@System.Text.Encoding.UTF8.GetString(previewBytes ?? Array.Empty<byte>())</pre>
+                    <div class="text-center p-5">
+                        <h5>Preview is not available for this file type.</h5>
+                        <p class="text-muted">The file is decrypted, but this format needs a compatible viewer. Use Download to open it in a suitable application.</p>
+                    </div>
                 }
             </div>
-            <div class="d-flex justify-content-between align-items-center mt-3">
-                <span class="text-muted small">Decrypted in-memory using user's unique derived key</span>
-                <button class="btn btn-vault-secondary btn-sm" @onclick="() => showPreviewModal = false">Close</button>
+
+            <div class="d-flex justify-content-between align-items-center mt-3 gap-3">
+                <span class="text-muted small">Decrypted in memory for preview</span>
+                <button class="btn btn-vault-secondary btn-sm" @onclick="ClosePreview">Close</button>
             </div>
         </div>
     </div>
@@ -566,6 +604,7 @@
     private bool showPreviewModal = false;
     private FileRecord? previewFileRecord;
     private byte[]? previewBytes;
+    private bool renderDocxPreviewPending = false;
 
     private bool showVersionModal = false;
     private FileRecord? versionTargetFile;
@@ -619,6 +658,35 @@
 
             return query.ToList();
         }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!renderDocxPreviewPending || previewBytes == null || previewFileRecord == null)
+            return;
+
+        renderDocxPreviewPending = false;
+
+        try
+        {
+            await JS.InvokeVoidAsync(
+                "docxPreviewInterop.renderFromBase64",
+                Convert.ToBase64String(previewBytes),
+                "docx-preview-container");
+        }
+        catch (Exception ex)
+        {
+            statusMessage = $"Word preview failed: {ex.Message}. Check that the docx-preview scripts are loaded.";
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void ClosePreview()
+    {
+        showPreviewModal = false;
+        renderDocxPreviewPending = false;
+        previewBytes = null;
+        previewFileRecord = null;
     }
 
     protected override async Task OnInitializedAsync()
@@ -785,6 +853,8 @@
                     {
                         previewFileRecord = file;
                         previewBytes = previewContent;
+                        renderDocxPreviewPending = file.FileName.EndsWith(
+                            ".docx", StringComparison.OrdinalIgnoreCase);
                         showPreviewModal = true;
                     }
                     else

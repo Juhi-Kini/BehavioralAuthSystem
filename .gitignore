@@ -1,0 +1,20 @@
+# Build output
+bin/
+obj/
+.vs/
+TestResults/
+
+# Local secrets/configuration (keep sanitized templates in source control)
+appsettings.Development.json
+appsettings.*.local.json
+secrets.json
+
+# User data and encrypted files
+App_Data/uploads/
+App_Data/temp/
+
+# IDE and OS files
+*.user
+*.suo
+.DS_Store
+Thumbs.db

@@ -3,13 +3,19 @@ window.keystrokeCapture = {
     globalSampler: null,
 
     attach: function (elementId, dotNetRef) {
-        // If already attached to this element, clean it up first
         if (this.instances[elementId]) {
             this.detach(elementId);
         }
 
         const el = document.getElementById(elementId);
-        if (!el) return;
+
+        if (!el) {
+            console.error(
+                "Keystroke capture input not found:",
+                elementId
+            );
+            return false;
+        }
 
         let keyState = {};
         let keyDownTimes = [];
@@ -130,6 +136,7 @@ window.keystrokeCapture = {
                 el.removeEventListener('input', handleInput);
             }
         };
+        return true;
     },
 
     reset: function (elementId) {

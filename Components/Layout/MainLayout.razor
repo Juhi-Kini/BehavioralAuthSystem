@@ -3,9 +3,6 @@
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthStateProvider
 @inject IEncryptionService EncryptionService
-@inject IAuthService AuthService
-@inject IContinuousReauthService ContinuousReauthService
-@inject IKeystrokeService KeystrokeService
 @inject IJSRuntime JS
 
 <div class="vault-app-container">
@@ -220,8 +217,6 @@
 
                 <div class="d-flex align-items-center gap-3">
 
-                    <TrustIndicator TrustLevel="@currentTrustLevel" />
-
                     <span class="badge bg-body-tertiary text-muted border border-color small"
                           style="font-size: 0.75rem;">
 
@@ -304,89 +299,15 @@
 
 
 <!-- =============================================================
-     CONTINUOUS RE-AUTHENTICATION MODAL
-     ============================================================= -->
-@if (showReauthPrompt)
-{
-    <div class="modal-vault-backdrop"
-         tabindex="-1">
-
-        <div class="modal-vault-content animate__animated animate__fadeInDown">
-
-            <h5 class="text-danger mb-2 d-flex align-items-center gap-2">
-
-                <svg width="20"
-                     height="20"
-                     fill="none"
-                     stroke="currentColor"
-                     viewBox="0 0 24 24">
-
-                    <path stroke-linecap="round"
-                          stroke-linejoin="round"
-                          stroke-width="2"
-                          d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z">
-                    </path>
-
-                </svg>
-
-                <span>
-                    Continuous Verification Alert
-                </span>
-
-            </h5>
-
-
-            <p class="text-muted small">
-
-                Background typing dynamics have deviated significantly from your baseline template.
-
-                Please retype your password to confirm active session ownership.
-
-            </p>
-
-
-            @if (!string.IsNullOrEmpty(reauthError))
-            {
-                <div class="alert alert-warning py-2 small">
-                    @reauthError
-                </div>
-            }
-
-
-            <input id="reauth-password-input"
-                   type="password"
-                   class="form-control form-control-vault mb-3"
-                   @bind="reauthPassword"
-                   @bind:event="oninput"
-                   placeholder="Retype your password" />
-
-
-            <button class="btn btn-vault w-100"
-                    disabled="@isReauthSubmitting"
-                    @onclick="SubmitReauthAsync">
-
-                @(isReauthSubmitting
-                    ? "Verifying Dynamics..."
-                    : "Confirm Identity")
-
-            </button>
-
-        </div>
-
-    </div>
-}
-
-
-<!-- =============================================================
      LAYOUT CSS
      ============================================================= -->
 <style>
 
     /*
-         ============================================================
-         GLOBAL LAYOUT
-         ============================================================
-        */
+             ============================================================
+             GLOBAL LAYOUT
+             ============================================================
+            */
 
     .vault-app-container {
         width: 100%;
@@ -398,10 +319,10 @@
 
 
     /*
-         ============================================================
-         MOBILE HEADER
-         ============================================================
-        */
+             ============================================================
+             MOBILE HEADER
+             ============================================================
+            */
 
     .mobile-top-header {
         position: fixed;
@@ -415,10 +336,10 @@
 
 
     /*
-         ============================================================
-         MAIN LAYOUT SHELL
-         ============================================================
-        */
+             ============================================================
+             MAIN LAYOUT SHELL
+             ============================================================
+            */
 
     .vault-layout-shell {
         width: 100%;
@@ -430,10 +351,10 @@
 
 
     /*
-         ============================================================
-         DESKTOP SIDEBAR
-         ============================================================
-        */
+             ============================================================
+             DESKTOP SIDEBAR
+             ============================================================
+            */
 
     .sidebar-vault {
         position: fixed;
@@ -450,8 +371,8 @@
 
 
         /*
-         Keep sidebar scrollbar visually subtle
-        */
+             Keep sidebar scrollbar visually subtle
+            */
 
         .sidebar-vault::-webkit-scrollbar {
             width: 5px;
@@ -464,10 +385,10 @@
 
 
     /*
-         ============================================================
-         MAIN COLUMN
-         ============================================================
-        */
+             ============================================================
+             MAIN COLUMN
+             ============================================================
+            */
 
     .main-column {
         margin-left: 280px;
@@ -481,10 +402,10 @@
 
 
     /*
-         ============================================================
-         DESKTOP TOP HEADER
-         ============================================================
-        */
+             ============================================================
+             DESKTOP TOP HEADER
+             ============================================================
+            */
 
     .desktop-top-header {
         height: 76px;
@@ -496,13 +417,13 @@
 
 
     /*
-         ============================================================
-         MAIN SCROLL AREA
+             ============================================================
+             MAIN SCROLL AREA
 
-         IMPORTANT:
-         ONLY THIS ELEMENT SCROLLS.
-         ============================================================
-        */
+             IMPORTANT:
+             ONLY THIS ELEMENT SCROLLS.
+             ============================================================
+            */
 
     .main-scroll-area {
         flex: 1;
@@ -514,8 +435,8 @@
 
 
         /*
-         Main scrollbar
-        */
+             Main scrollbar
+            */
 
         .main-scroll-area::-webkit-scrollbar {
             width: 8px;
@@ -536,10 +457,10 @@
 
 
     /*
-         ============================================================
-         PAGE CONTENT
-         ============================================================
-        */
+             ============================================================
+             PAGE CONTENT
+             ============================================================
+            */
 
     .page-content {
         min-height: 100%;
@@ -548,10 +469,10 @@
 
 
     /*
-         ============================================================
-         MOBILE
-         ============================================================
-        */
+             ============================================================
+             MOBILE
+             ============================================================
+            */
 
     @@media (max-width: 767.98px) {
 
@@ -566,8 +487,8 @@
             margin-top: 60px;
         }
         /*
-             Mobile sidebar
-            */
+                 Mobile sidebar
+                */
 
         .sidebar-vault {
             top: 60px;
@@ -585,8 +506,8 @@
                 transform: translateX(0);
             }
         /*
-             Mobile main column
-            */
+                 Mobile main column
+                */
 
         .main-column {
             margin-left: 0;
@@ -594,23 +515,23 @@
             height: calc(100vh - 60px);
         }
         /*
-             No desktop header on mobile
-            */
+                 No desktop header on mobile
+                */
 
         .desktop-top-header {
             display: none !important;
         }
         /*
-             Mobile scrolling area
-            */
+                 Mobile scrolling area
+                */
 
         .main-scroll-area {
             height: calc(100vh - 60px);
             max-height: calc(100vh - 60px);
         }
         /*
-             Mobile backdrop
-            */
+                 Mobile backdrop
+                */
 
         .sidebar-backdrop {
             position: fixed;
@@ -625,10 +546,10 @@
 
 
     /*
-         ============================================================
-         SMALL MOBILE
-         ============================================================
-        */
+             ============================================================
+             SMALL MOBILE
+             ============================================================
+            */
 
     @@media (max-width: 480px) {
 
@@ -671,27 +592,12 @@
 
     private string masterSecretStatus = string.Empty;
 
-    private string currentTrustLevel = "High";
 
     private string? currentUsername;
 
     private int? currentUserId;
 
     private bool isMobileMenuOpen = false;
-
-
-    private bool showReauthPrompt;
-
-    private string reauthPassword = string.Empty;
-
-    private string? reauthError;
-
-    private bool isReauthSubmitting;
-
-    private bool samplerAttached;
-
-
-    private DotNetObjectReference<MainLayout>? selfReference;
 
 
     protected override async Task OnInitializedAsync()
@@ -722,49 +628,7 @@
         }
 
 
-        ContinuousReauthService.OnTrustLevelChanged
-            += HandleTrustLevelChangedAsync;
-
-        ContinuousReauthService.OnReauthRequired
-            += HandleReauthRequiredAsync;
-
-        currentTrustLevel =
-            ContinuousReauthService.CurrentTrustLevel;
     }
-
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        /*
-         * Attach the background sampler only once
-         * for an authenticated user session.
-         */
-
-        if (currentUserId.HasValue && !samplerAttached)
-        {
-            samplerAttached = true;
-
-            selfReference =
-                DotNetObjectReference.Create(this);
-
-            await JS.InvokeVoidAsync(
-                "keystrokeCapture.attachGlobalSampler",
-                selfReference);
-        }
-
-
-        /*
-         * Attach re-authentication keystroke capture
-         */
-
-        if (showReauthPrompt)
-        {
-            await JS.InvokeVoidAsync(
-                "keystrokeCapture.attach",
-                "reauth-password-input");
-        }
-    }
-
 
     private void ToggleMobileMenu()
     {
@@ -772,184 +636,10 @@
     }
 
 
-    [JSInvokable("OnContinuousSampleCaptured")]
-    public async Task OnContinuousSampleCaptured(
-        KeystrokeSample sample)
-    {
-        if (!currentUserId.HasValue)
-            return;
-
-
-        var user =
-            await AuthService.GetUserByIdAsync(
-                currentUserId.Value);
-
-
-        if (user is null)
-            return;
-
-
-        await ContinuousReauthService
-            .ProcessContinuousSampleAsync(
-                user,
-                sample);
-    }
-
-
-    private async Task HandleTrustLevelChangedAsync(
-        string newLevel)
-    {
-        currentTrustLevel = newLevel;
-
-        await InvokeAsync(
-            StateHasChanged);
-    }
-
-
-    private async Task HandleReauthRequiredAsync()
-    {
-        showReauthPrompt = true;
-
-        reauthError = null;
-
-        reauthPassword = string.Empty;
-
-        await InvokeAsync(
-            StateHasChanged);
-    }
-
-
-    private async Task SubmitReauthAsync()
-    {
-        if (isReauthSubmitting ||
-            string.IsNullOrEmpty(currentUsername))
-        {
-            return;
-        }
-
-
-        isReauthSubmitting = true;
-
-        reauthError = null;
-
-
-        try
-        {
-            var timingData =
-                await JS.InvokeAsync<KeystrokeSample>(
-                    "keystrokeCapture.getTimingData",
-                    "reauth-password-input");
-
-
-            var user =
-                await AuthService.GetUserByUsernameAsync(
-                    currentUsername);
-
-
-            bool passwordOk =
-                user is not null &&
-                global::BehavioralAuthSystem.Services
-                    .AuthService
-                    .VerifyPassword(
-                        reauthPassword,
-                        user.PasswordHash);
-
-
-            bool rhythmOk = false;
-
-
-            if (user is not null)
-            {
-                var loginPattern =
-                    user.BehavioralPatterns?
-                        .FirstOrDefault(
-                            p => p.ActionType == "login");
-
-
-                if (loginPattern is not null)
-                {
-                    var verification =
-                        KeystrokeService.VerifySample(
-                            timingData,
-                            loginPattern);
-
-                    rhythmOk =
-                        verification.IsPassed;
-                }
-            }
-
-
-            if (passwordOk && rhythmOk)
-            {
-                ContinuousReauthService
-                    .ResetTrustLevel();
-
-                showReauthPrompt = false;
-
-                reauthPassword = string.Empty;
-
-
-                await JS.InvokeVoidAsync(
-                    "keystrokeCapture.detach",
-                    "reauth-password-input");
-            }
-            else
-{
-    if (!passwordOk)
-    {
-        reauthError = "Password verification failed. Please check your password.";
-    }
-    else if (user is null)
-    {
-        reauthError = "User account could not be loaded.";
-    }
-    else if (user.BehavioralPatterns?
-                 .FirstOrDefault(p => p.ActionType == "login") is null)
-    {
-        reauthError = "No enrolled login typing pattern was found.";
-    }
-    else if (timingData is null ||
-             timingData.HoldTimes == null ||
-             timingData.HoldTimes.Count == 0)
-    {
-        reauthError = "No typing data was captured. Please type the password manually.";
-    }
-    else
-    {
-        var loginPattern = user.BehavioralPatterns!
-            .First(p => p.ActionType == "login");
-
-        var result = KeystrokeService.VerifySample(
-            timingData,
-            loginPattern);
-
-        reauthError = result.Message;
-    }
-
-    await JS.InvokeVoidAsync(
-        "keystrokeCapture.reset",
-        "reauth-password-input");
-}
-        }
-        catch (Exception)
-        {
-            reauthError =
-                "Verification error. Please retry.";
-        }
-        finally
-        {
-            isReauthSubmitting = false;
-        }
-    }
-
-
     private async Task HandleLogout()
     {
         try
         {
-            await JS.InvokeVoidAsync(
-                "keystrokeCapture.detachGlobalSampler");
-
             await JS.InvokeVoidAsync(
                 "authInterop.logout");
         }
@@ -961,41 +651,6 @@
         }
     }
 
-
-    public async ValueTask DisposeAsync()
-    {
-        ContinuousReauthService.OnTrustLevelChanged
-            -= HandleTrustLevelChangedAsync;
-
-        ContinuousReauthService.OnReauthRequired
-            -= HandleReauthRequiredAsync;
-
-
-        try
-        {
-            await JS.InvokeVoidAsync(
-                "keystrokeCapture.detachGlobalSampler");
-        }
-        catch
-        {
-        }
-
-
-        selfReference?.Dispose();
-
-
-        if (showReauthPrompt)
-        {
-            try
-            {
-                await JS.InvokeVoidAsync(
-                    "keystrokeCapture.detach",
-                    "reauth-password-input");
-            }
-            catch
-            {
-            }
-        }
-    }
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
 }
